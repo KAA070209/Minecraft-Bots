@@ -1,0 +1,27 @@
+{
+  "name": "mc-afk-bot",
+  "version": "1.0.0",
+  "description": "Mineflayer AFK bot + multi-account orchestrator for cracked (offline-mode) Minecraft servers",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js",
+    "multi": "node multi.js",
+    "ping": "node libping.js",
+    "test": "node test/units.test.js && node test/run-integration.js",
+    "test:units": "node test/units.test.js",
+    "test:integration": "node test/run-integration.js",
+    "test:register": "node test/register.test.js",
+    "test:register-live": "node test/register-live.test.js",
+    "test:multi": "node test/multi.test.js",
+    "test:chatgame": "node test/chatgame.test.js",
+    "test:solver": "node test/solver.test.js",
+    "test:regression": "node test/chatgame-regression.js",
+    "test:stress": "node test/chatgame-stress.js",
+    "test:ai": "node test/chatgame-ai.test.js",
+    "test:live": "node test/chatgame-live-regression.js"
+  },
+  "dependencies": {
+    "mineflayer": "^4.23.0"
+  }
+}

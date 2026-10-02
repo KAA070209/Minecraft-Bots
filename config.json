@@ -1,0 +1,29 @@
+{
+  "server": { "host": "minesive.com", "port": 25565 },
+  "account": { "username": "AzkaSaadi" },
+  "version": null,
+  "join": { "spawnTimeoutMs": 90000, "autoJoin": true, "autoReconnect": true },
+  "register": {
+    "enabled": true,
+    "mode": "login",
+    "password": "Azka1234",
+    "delayMs": 1500,
+    "retryMs": 8000,
+    "maxAttempts": 3,
+    "maxAuthFailures": 3
+  },
+  "afk": {
+    "mode": "look",
+    "minIntervalMs": 25000,
+    "maxIntervalMs": 55000,
+    "yawStepDeg": 70,
+    "pitchMinDeg": -25,
+    "pitchMaxDeg": 15,
+    "swingArm": true,
+    "jumpChance": 0
+  },
+  "survival": { "autoEat": true, "eatBelowFood": 18, "eatBelowHealth": 17, "rescue": true, "lowHealthQuit": 0 },
+  "reconnect": { "baseMs": 6000, "maxMs": 180000, "factor": 1.8, "jitter": 0.3, "maxAttempts": 0, "afkKickExtraMs": 90000 },
+  "logging": { "level": "info", "file": "./logs/afk-bot.log", "color": true, "logChat": true, "maxLogFileBytes": 5242880 },
+  "console": { "enabled": true, "commandPrefix": "!" }
+}

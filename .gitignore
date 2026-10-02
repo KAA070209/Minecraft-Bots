@@ -1,0 +1,8 @@
+node_modules/
+logs/
+session.json
+sessions/
+.auth-cache/
+nmp-cache/
+*.log
+profiles.local.json

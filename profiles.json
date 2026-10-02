@@ -1,0 +1,69 @@
+{
+  "defaults": {
+    "server": {
+      "host": "minesive.com",
+      "port": 25565
+    },
+    "register": {
+      "enabled": true,
+      "mode": "register",
+      "commandTemplate": "/register {password}",
+      "delayMs": 1500,
+      "retryMs": 8000,
+      "maxAttempts": 3
+    },
+    "version": null,
+    "afk": {
+      "mode": "look",
+      "minIntervalMs": 25000,
+      "maxIntervalMs": 55000
+    },
+    "survival": {
+      "autoEat": true,
+      "rescue": true
+    },
+    "reconnect": {
+      "autoReconnect": true,
+      "baseMs": 10000
+    },
+    "logging": {
+      "level": "info",
+      "file": "./logs/{name}.log",
+      "logChat": true
+    },
+    "console": {
+      "enabled": true
+    },
+    "chatGame": {
+      "enabled": true,
+      "delayMs": 20,
+      "minIntervalMs": 700,
+      "solo": true,
+      "soloWindowMs": 10000,
+      "storeFile": "logs/chatgame-memory-{username}.json",
+      "mathFirst": true,
+      "debugRaw": true
+    }
+  },
+  "profiles": [
+    {
+      "name": "AzkaSaadi",
+      "password": "Azka1234",
+      "register": {
+        "mode": "login"
+      }
+    },
+    {
+      "name": "TharXz",
+      "password": "adik123"
+    },
+    {
+      "name": "VBIFERSS",
+      "password": "manusia"
+    },
+    {
+      "name": "KaaXz",
+      "password": "Azka1234"
+    }
+  ]
+}
