@@ -14,6 +14,10 @@ Fitur utama:
 - 8 akun `jack01`–`jack08` dalam satu proses Node (hemat RAM, cepat start)
 - AFK: putar kepala, ayun lengan, lompat, jalan ke blok aman
 - auto-makan, penyelamatan otomatis dari lava/air/jatuh
+- **pukul mob** otomatis (cari mob terdekat, pilih senjata terbaik, serang sampai knock)
+- **beli shop otomatis** — GUI atau perintah, dan **buang seluruh isi inventory saat penuh**
+- **lihat isi inventory** dari console (`inv`), lengkap dengan filter nama item
+- **panen lahan** (wortel/gandum/kentang) + ambil drop + tanam ulang
 - auto-reconnect dengan exponential backoff + jitter
 - deteksi kick AFK (jeda diperpanjang) vs kick auth (coba daftar ulang)
 - heartbeat status, log terpisah per bot, console interaktif
@@ -136,11 +140,19 @@ npm run multi -- --statusEvery 30000          # interval tabel status (ms)
 | `help` | daftar perintah |
 | `status` | status koneksi, versi, uptime, posisi |
 | `pos` | posisi, HP, food, block atas/bawah |
-| `stats` | jumlah aksi anti-AFK, lompat, makan, penyelamatan |
+| `stats` | jumlah aksi anti-AFK, lompat, makan, penyelamatan, pukul mob, beli, panen |
 | `look [yaw] [pitch]` | putar kepala (derajat) |
-| `idle` | paksa satu aksi anti-AFK sekarang |
-| `eat` | paksa makan sekarang |
+| `idle` | faksa satu aksi anti-AFK sekarang |
+| `eat` | faksa makan sekarang |
 | `rescue` | cek bahaya lalu selamatkan bot |
+| `attack [on\|off\|stop]` | lihat/nyalakan/matikan pukul mob otomatis |
+| `buy` | beli daftar item shop sekarang |
+| `dump` | buang semua isi inventory (kecuali `shop.keep`) |
+| `inv [filter] [max]` | lihat isi inventory: jumlah slot terpakai, item di tangan, daftar tumpukan (filter = nama item, max = jumlah baris) |
+| `harvest` | panen lahan di `farm.area` sekarang |
+| `harvest stop` | batalkan panen yang sedang jalan (auto-panen tetap menyala) |
+| `farm [on\|off]` | lihat/nyalakan/matikan auto-panen |
+| `stop` | berhenti total: batalkan panen, matikan auto-panen + pukul mob, hentikan gerakan |
 | `say <pesan>` | kirim chat |
 | `restart` | keluar lalu sambung ulang |
 | `quit` | matikan bot |
@@ -151,7 +163,16 @@ npm run multi -- --statusEvery 30000          # interval tabel status (ms)
 | --- | --- |
 | `status` | tabel status semua bot |
 | `status <nama>` | detail satu bot (posisi, HP, food, register) |
-| `stats <nama>` | statistik aksi AFK satu bot |
+| `stats <nama>` | statistik AFK + pukul mob + beli + panen satu bot |
+| `attack [nama] [on\|off\|stop]` | pukul mob satu bot (`off`/`stop` = berhenti menyerang) |
+| `buy <nama>` | beli item shop di satu bot |
+| `dump <nama>` | buang isi inventory satu bot |
+| `inv <nama> [filter] [max]` | lihat isi inventory satu bot |
+| `invall [filter] [max]` | lihat isi inventory semua bot aktif |
+| `harvest <nama>` | panen lahan satu bot |
+| `harvest <nama> stop` | batalkan panen satu bot yang sedang jalan |
+| `farm <nama> [on\|off]` | lihat/nyalakan/matikan auto-panen satu bot |
+| `stopall` | hentikan panen + pukul mob semua bot |
 | `restart <nama>` | paksa sambung ulang satu bot |
 | `stop <nama>` | hentikan satu bot |
 | `help` | daftar perintah |
@@ -210,6 +231,216 @@ kepala. Bot hanya melangkah ke blok yang di atasnya ada block solid, jadi tidak 
 | `rescue` | `true` | keluar dari lava / air, kembali ke blok aman |
 | `lowHealthQuit` | `0` | keluar kalau HP <= nilai ini; `0` = nonaktif |
 
+### `combat` (pukul mob)
+
+| Opsi | Default | Keterangan |
+| --- | --- | --- |
+| `enabled` | `false` | `true` = pukul mob hostile secara otomatis |
+| `range` | `12` | jangkauan cari target (blok) |
+| `attackRange` | `3` | jarak mulai mengayun pedang |
+| `intervalMs` | `500` | kecepatan polling keputusan (cari target / mendekat) |
+| `attackCooldownMs` | `100` | jeda antarayunan saat mob dalam jangkauan; ini juga CPS (`100` = 10 CPS, `0` = spam) |
+| `cpsMin` / `cpsMax` | `null` | `null` = click rate tetap dari `attackCooldownMs`. Kalau diisi, jeda tiap klik **diacak** di antara `cpsMin` dan `cpsMax` (persis seperti mod auto clicker), jadi pola ayunan tidak terlihat tetap: `{ "cpsMin": 8, "cpsMax": 14 }` = acak 8-14 klik/detik. Batas tersirat 0,5-40 CPS |
+| `equipRetryMs` | `1000` | jeda sebelum equip diulang kalau server tidak menaruh senjata di tangan |
+| `retreatBelowHealth` | `6` | HP <= nilai ini → berhenti menyerang untuk regen; `0` = nonaktif |
+| `jumpWhenBlocked` | `true` | target yang belum bisa didekati dan jaraknya tidak mengecil → coba lompat sekali sebelum menyerah |
+| `stuckTimeoutMs` | `3000` | jarak ke target tidak mengecil selama nilai ini → dicoret dari daftar target |
+| `giveUpMs` | `15000` | total target yang tidak bisa didekati selama nilai ini → menyerah, cari mob lain |
+| `attackPlayers` | `false` | `true` = boleh menyerang player (default tidak) |
+| `whitelist` | `[]` | kalau diisi, **hanya** mob dalam daftar ini yang diserang |
+| `ignore` | `[]` | mob yang tidak boleh diserang (mis. `["creeper"]`) |
+
+Bot hanya menyerang mob hostil (zombie, skeleton, spider, creeper, slime, dll). Player,
+villager, hewan, item, `armor_stand`, `warden`, dan naga tidak pernah jadi target kecuali
+`whitelist` diisi eksplisit. `ignore` menang atas `whitelist`. Deteksi hostile memakai nama
+mob, `entity.type/kind/category`, dan registry vanilla (jadi mob dari mod yang dikenal
+ikut dipukul).
+
+Urutan kerjanya: begitu mob terlihat, senjata terbaik di tas langsung dipegang di tangan
+(pedang > kapak > beliung > sekop, lapis tertinggi dulu), baru bot menyusul dan mengayun.
+Senjata tidak menunggu sampai mob dalam jangkauan, karena memindahkan item butuh beberapa
+klik ke server dan kalau ditunggu, ayunan pertama sampai dengan tangan kosong. Kalau
+`equip` gagal, pukulan tetap jalan dan senjata dicoba lagi; kalau server menerima equip
+tanpa benar-benar menaruh senjata di tangan, `equipRetryMs` mengatur kapan percobaan
+berikutnya dilakukan. `!attack` menampilkan senjata yang sedang dipegang.
+
+Selama mob dalam jangkauan, loop tidak ikut jeda `intervalMs`: periodenya memerah jadi
+`attackCooldownMs`, jadi bot mengayun terus seperti auto clicker (`100` ms = 10 CPS, `0`
+= tanpa jeda, dibatasi 40 CPS). Mob yang jaraknya masih jauh dikejar sambil berlari;
+target yang tidak bisa didekati (terhalang, atau beda tinggi/jauh) dilompati lalu dicoret
+supaya bot tidak nyangkut.
+
+`cpsMin`/`cpsMax` mengubah jeda tetap jadi jeda acak, persis seperti mod auto clicker
+yang tidak mengklik dengan kecepatan selalu sama: setiap klik ambil angka random antara
+`1000/cpsMax` dan `1000/cpsMin` ms. Angka undian itu dipakai dua kali (sebagai cooldown
+pukul dan sebagai jeda loop berikutnya), bukan diundi dua kali, supaya CPS yang ditulis
+memang yang terjadi — kalau dihitung dua kali, jeda efektifnya jadi penjumlahan dua
+undian dan click rate asli selalu lebih rendah dari yang diminta. Yang diacak hanya jeda
+antarayunan; bergerak, lari, dan lompat tidak ikut berubah.
+
+Auto-panen dan pukul mob sama-sama menggerakkan bot, jadi hanya boleh satu yang memegang
+kontrol gerak. Begitu ada target, auto-panen berhenti jalan dan siklus panennya ditunda sampai
+duel selesai. Kalau tidak, keduanya saling membalik arah tiap tick: bot terlihat jalan,
+tapi tidak pernah sampai ke mob.
+
+Deteksi "macet" memakai jarak ke target, bukan sekadar "bot bergerak". Bot yang mondar-
+mandar atau berputar di tempat tetap dihitung macet setelah `stuckTimeoutMs`, jadi tidak
+lagi dikejar tanpa henti. `!attack` menampilkan aksi terakhir (`dekati`/`serang`) dan jarak
+terakhir ke mob, jadi langsung kelihatan apakah bot "tidak sampai" atau "sudah sampai tapi
+tidak kena".
+
+### `shop` (beli otomatis + buang inventory)
+
+| Opsi | Default | Keterangan |
+| --- | --- | --- |
+| `enabled` | `false` | `true` = beli otomatis sesuai `items` |
+| `mode` | `"gui"` | `gui` = klik GUI shop, `command` = kirim perintah chat |
+| `command` | `"/shop"` | perintah untuk membuka GUI shop |
+| `items` | `["carrot","wheat","cooked_beef"]` | daftar nama item yang dibeli |
+| `amount` | `64` | jumlah default per item |
+| `amounts` | `{}` | jumlah per item, contoh `{ "carrot": 64, "cooked_beef": 32 }` |
+| `intervalMs` | `300000` | jeda antar siklus belanja (5 menit) |
+| `buyIntervalMs` | `1500` | jeda antar klik/purchase |
+| `maxBuyPerCycle` | `8` | batas item per siklus; `0` = tanpa batas |
+| `dumpWhenFull` | `true` | inventory penuh → **buang semua isi** dulu |
+| `reserveSlots` | `1` | sisakan N slot kosong (tidak ikut dibuang) |
+| `keep` | `["shield","elytra","totem_of_undying"]` | item yang tidak pernah dibuang |
+| `shiftBuy` | `false` | `true` = shift-klik (beli satu stack) |
+| `closeAfter` | `true` | tutup GUI setelah selesai belanja |
+| `buyCommandTemplate` | `"/shop buy {item} {amount}"` | template untuk `mode: command` |
+
+Cara kerja: bot kirim `command` → GUI terbuka → klik slot yang namanya ada di `items` → kalau
+inventory sudah penuh, bot **membuang seluruh isi tas** (kecuali `keep`), lalu lanjut belanja.
+Slot yang tidak muat dilewati supaya pembelian tidak gagal. Kalau `mode: command`, bot memakai
+`buyCommandTemplate` per item (`/shop buy carrot 64`).
+
+### `farm` (panen lahan)
+
+| Opsi | Default | Keterangan |
+| --- | --- | --- |
+| `enabled` | `false` | `true` = auto-panen |
+| `autoDiscover` | `true` | bot mencari lahan sendiri di sekitar posisinya, jadi `farm.area` boleh dibiarkan kosong |
+| `searchRadius` | `32` | radius pencarian lahan dari posisi bot (maks 64) |
+| `searchIntervalMs` | `30000` | jeda antar pencarian lahan baru (min 5000) |
+| `area.x` / `area.y` / `area.z` | `0` / `64` / `0` | titik tengah lahan; kalau diisi, dipakai duluan sebelum cari sendiri |
+| `area.radius` | `8` | radius scan (maks 32) |
+| `area.bounds` | `null` | lahan berbentuk **kotak**: `{ "minX": .., "maxX": .., "minZ": .., "maxZ": .. }`. Dipakai duluan daripada `x/z/radius`, dan boleh jauh lebih lebar dari radius 32 (maks 256 blok per sisi) |
+| `crops` | `["carrots","wheat","potatoes"]` | nama tanaman; blok (`carrots`) atau item (`carrot`) sama-sama diterima |
+| `scanHeight` | `2` | tinggi scan di atas `area.y` (1-6) supaya Zamora/terrace tetap kena |
+| `scanIntervalMs` | `15000` | jeda antar scan lahan, sekaligus masa berlaku cache scan |
+| `harvestIntervalMs` | `400` | jeda setelah selesai jalan ke sekumpulan tanaman, bukan jeda tiap tanaman |
+| `reach` | `3.2` | jangkauan memotong; semua tanaman dalam jangkauan dipotong sekaligus sebelum bot jalan lagi |
+| `walkToRadius` | `24` | kalau lahan kosong tapi jaraknya lebih dari ini, bot jalan ke lahan lalu tunggu chunk termuat; `0` = tidak pernah jalan |
+| `maxWalkDistance` | `64` | pengaman: kalau lahan lebih jauh dari ini, bot tidak jalan dan lapor koordinat area yang kelihatan salah |
+| `walkTimeoutMs` / `walkStepMs` | `8000` / `250` | batas waktu dan jeda antar langkah jalan |
+| `cropWalkSteps` | `0` | maksimal langkah jalan mengejar satu tanaman; `0` = tanpa batas (berhenti hanya kalau benar-benar macet) |
+| `chaseRange` | `0` | jarak maksimal satu tanaman boleh dikejar dalam blok; `0` = tanpa batas. Dengan nilai > 0, tanaman yang lebih jauh tidak dikejar ke pojok lahan: bot memotong yang terjangkau lalu menyusun rencana ulang |
+| `pathRadius` | `24` | setengah sisi kotak pencarian rute memutar (A*) saat jalan terhalang; rentang 4-48 |
+| `betweenCycleMs` | `600` | jeda cepat antar siklus panen ketika tidak ada tanaman siap dipanen (min 200) |
+| `jumpToClimb` | `false` | `true` = boleh melompat untuk lewat obstacle; default jalan biasa |
+| `jumpCooldownMs` | `1500` | jeda minimal antar lompatan |
+| `sprint` | `false` | `true` = lari (Shift) saat mengejar tanaman jauh |
+| `dropWaitMs` / `dropStepMs` | `1500` / `150` | menunggu item jatuh muncul sebelum diambil |
+| `pickupRadius` / `pickupAttempts` | `12` / `14` | radius dan jumlah percobaan ambulance drop |
+| `pickupStepMs` | `150` | jeda antar langkah saat mengejar item jatuh |
+| `sweepDrops` | `true` | di akhir siklus, keliling ambil sisa hasil panen yang gagal terambil |
+| `sweepLimit` | `8` | maksimal item yang dicoba ambil dalam satu sapuan akhir siklus |
+| `dropMemoryMs` | `120000` | berapa lama hasil panen dianggap milik bot (mencegah bot mengejar drop orang lain) |
+| `useTool` | `true` | pakai cangkul terbaik sebelum memanen |
+| `maxPerCycle` | `0` | batas tanaman per siklus; `0` = tanpa batas, panen berjalan terus sampai di-stop |
+| `harvestCooldownMs` | `60000` | tanaman yang sudah dipanen (lokasi sama) tidak dihitung lagi sampai jeda ini habis, jadi bot tidak memanen ulang tanaman yang baru ia tanam sendiri; `0` = nonaktif |
+| `replant` | `true` | tanam ulang setelah panen |
+| `replantItem` | `null` | item untuk tanam ulang; default ikut tanaman (wortel → wortel) |
+
+Cara kerja: bot scan kotak `area` (termasuk `scanHeight` tinggi di atas `area.y`), ambil tanaman yang
+berdiri di atas tanah sawah (`farmland`/`dirt`), lalu jalan biasa menuju tanaman terdekat sambil
+memotong semua tanaman yang sudah dijangkau di jalur jalan. Setiap tanaman dipatah → tunggu drop
+muncul → ambil → tanam ulang, tapi tidak satu per satu berdiri diam.
+
+Bisa juga diisi empat sudut (harus 4 titik, urut bebas) atau dua titik `{x, z}`, hasilnya sama persis
+dengan `bounds` di atas:
+
+```json
+"area": {
+  "y": 62,
+  "corners": [
+    { "x": 7986, "z": 7507 }, { "x": 8084, "z": 7507 },
+    { "x": 8084, "z": 7572 }, { "x": 7986, "z": 7572 }
+  ]
+}
+```
+
+atau dengan `bounds` (lebih ringkas):
+
+```json
+"area": {
+  "y": 62,
+  "bounds": { "minX": 7986, "maxX": 8084, "minZ": 7507, "maxZ": 7572 }
+}
+```
+
+Untuk kotak besar, jarak dihitung ke tepi kotak, bukan ke titik tengah: begitu bot berdiri di dalam
+lahan, `jarak 0` dan bot tidak mondar-mondar ke tengah lahan. Kalau bot di luar kotak, bot jalan ke
+titik terdekat di tepi kotak (bukan ke pojok terjauh). `area.x/z/radius` boleh tetap ada di config,
+kotak yang menang dipakai.
+
+Hasil panen yang jatuh **ikut diambil**, dan hanya itu. Bot mencatat entity `item` yang muncul di dekat
+tanaman yang baru saja dipotong, jadi carrot/wheat/biji yang dijatuhkan panen sendiri masuk tas tanpa
+mengambil stack milik pemain lain atau loot dari mob. Satu tanaman bisa menjatuhkan lebih dari satu
+stack (gandum + benih, wortel dengan Fortune) dan semuanya diambil. Kalau ada yang gagal terambil -
+misalnya tas sudah penuh atau ada yang menghalangi - sisanya dicoba lagi di sapuan akhir siklus
+(`sweepDrops`), sebelum bot pindah ke tanaman berikutnya.
+
+Kalau ada tanaman yang **sudah masuk daftar panen** tapi persis menghalangi jalan, bot memotongnya
+untuk membuka jalan lalu menunda tanam ulangnya sampai bot sudah melangkah lewat (berlubang sebentar di
+tengah siklus, ditutup lagi sebelum siklus selesai atau saat `harvest stop`). Tidak ada lompatan dan
+tidak lari kecuali `farm.jumpToClimb` / `farm.sprint` diaktifkan.
+
+Bot cuma menyentuh apa yang ada di daftar panen siklus itu. Tanaman di luar `farm.crops`, di luar
+`area`, atau yang type-nya tidak cocok tidak akan digali walaupun menghalangi jalan. Sebelum menggali
+setiap tanaman dicek ulang lewat `blockAt`, jadi kalau bloknya sudah hilang (dipanen orang lain,
+dihapus, atau sudah dipanen siklus ini) tanaman itu langsung dibuang dari daftar dan tidak dikejar.
+Kalau `chaseRange` diisi, tanaman yang lebih jauh dari itu tidak dikejar: bot memotong yang terjangkau
+lalu menyusun rencana ulang, jadi tidak nyangkut di pojok lahan. Dengan `chaseRange: 0` (default)
+panen berjalan terus tanpa batas jarak sampai di-stop.
+
+### Jalan terhalang → cari jalan lain
+
+Tiap langkah jalan, dua hal dicek: tanaman di depan dipotong lebih dulu, lalu blok/mob/pemain yang
+menghalangi jalur lewat `blockAt` dan posisi entity di sekitar (cek kamera). Kalau jalur ketutup,
+bot mencari **rute memutar** dengan A* dalam kotak selebar `pathRadius` dan mengikutinya selangkah
+demi selangkah; kalau tidak ada rute yang ketemu, bot kembali ke jalan biasa. Rute yang dipakai
+tercatat di `stats.detours`, jadi bisa dilihat lewat `farm` di console. Penghalang yang cuma satu
+blok tinggi tetap dilewati dengan cara memotong tanaman yang memang masuk daftar panen, tanpa
+melompat (kecuali `jumpToClimb` aktif).
+
+Scan penuh itu mahal (ribuan `blockAt`), jadi hasilnya disimpan sebentar (`scanIntervalMs`) dan
+dipakai ulang: scan susulan dijadwalkan di jeda antar tanaman, bukan di tengah pemotongan. Efeknya
+siklus berikutnya langsung bisa memotong tanpa scan dari nol, dan biaya scan turun drastis di lahan
+besar. Kalau satu siklus tidak berhasil memotong apa pun, cache ditandai basi dan siklus berikutnya
+scan ulang dari nol.
+
+Kalau `area` kosong atau tidak ada tanaman di situ, `autoDiscover` aktif: bot mencari lahan sendiri
+mulai dari posisi sekarang, melingkar ke luar (cincin 1, 2, 3, ... sampai `searchRadius`), berhenti di
+lahan pertama yang berisi tanaman, lalu remembers area-nya untuk discan ulang sampai habis — baru cari
+lahan berikutnya. Bot juga berjalan ke lahan yang ditemukan (dibatasi `maxWalkDistance`), jadi simpan
+bot di dekat lahan. Contoh config paling sederhana:
+
+```json
+"farm": {
+  "enabled": true,
+  "crops": ["carrots"],
+  "scanHeight": 3,
+  "autoDiscover": true,
+  "searchRadius": 48
+}
+```
+
+Kalau ternyata ada lahan yang lebih dekat, isi `area` untuk memprioritaskan titik itu. Cek cepat dengan
+perintah `farm` di console: area yang dipakai, jarak bot ke lahan, jumlah tanaman per tipe, filter
+`crops`, lahan yang ditemukan, dan error terakhir. Kalau muncul "tidak ada tanaman", naikkan
+`farm.scanHeight` atau `farm.searchRadius`, atau cek koordinat `area.y` dengan `pos`.
+
 ### `reconnect`
 
 | Opsi | Default | Keterangan |
@@ -241,15 +472,18 @@ autentikasi/registrasi dicoba ulang sampai `maxAuthFailures`.
 node index.js --host server.com --port 25565 --username jack01 --afk wander
 node index.js --register register --registerPassword rahasia
 node index.js --noRegister --log debug --noFile
+node index.js --combat --shop /shop --farm
 ```
 
 ```
 MC_HOST, MC_PORT, MC_USERNAME, MC_VERSION, MC_REGISTER_MODE, MC_REGISTER_PASSWORD,
-MC_NO_REGISTER, MC_LOG_LEVEL, MC_AFK_MODE, MC_AFK_INTERVAL, MC_CONFIG, MC_CONFIG_JSON
+MC_NO_REGISTER, MC_LOG_LEVEL, MC_AFK_MODE, MC_AFK_INTERVAL, MC_COMBAT, MC_SHOP,
+MC_SHOP_COMMAND, MC_FARM, MC_CONFIG, MC_CONFIG_JSON
 ```
 
 `MC_CONFIG` menunjuk file JSON lain; `MC_CONFIG_JSON` menerima objek JSON langsung (dipakai
-orkestrator untuk menimpa config per profil).
+orkestrator untuk menimpa config per profil). `--combat`, `--shop <perintah>`, dan `--farm`
+menyalakan fitur tanpa mengubah file config.
 
 ## Struktur file
 
@@ -264,6 +498,10 @@ lib/runner.js       logika satu bot: koneksi, event, reconnect, shutdown
 lib/register.js     auto-register / auto-login
 lib/profiles.js     load + validasi file profil
 lib/behaviors.js    anti-AFK, auto-makan, penyelamatan
+lib/combat.js       pukul mob otomatis + pilih senjata
+lib/shop.js         beli shop otomatis + buang inventory saat penuh
+lib/inventory.js    baca + format isi inventory (filter, ringkasan slot, item tangan)
+lib/farm.js         panen lahan + ambil drop + tanam ulang
 lib/backoff.js      exponential backoff + jitter
 lib/console.js      perintah console interaktif
 lib/logger.js       log bertimestamp ke terminal + file
@@ -272,12 +510,13 @@ lib/logger.js       log bertimestamp ke terminal + file
 ## Test
 
 ```bash
-npm test                 # unit + integration
+npm test                 # unit + features + integration
 npm run test:units       # fungsi murni
-npm run test:register    # logika auto-register (47 test)
+npm run test:features    # pukul mob, shop, inventory, panen, config (425 test)
+npm run test:register    # logika auto-register (53 test)
 npm run test:integration # reconnect + mode AFK
 npm run test:register-live # register sungguhan lewat server lokal (17 test)
-npm run test:multi       # 8 bot + shutdown bersih (37 test)
+npm run test:multi       # 8 bot + shutdown bersih (44 test)
 ```
 
 Semua test memakai server Minecraft lokal palsu (`test/local-server.js`) dengan simulasi
@@ -310,3 +549,50 @@ Naikkan `--stagger` (misal `8000`) supaya join tidak berbarengan.
 **8 bot start lambat padahal `--stagger` kecil**
 Semua bot share satu proses Node, jadi bottleneck-nya di CPU/RAM mesin, bukan jaringan. Kurangi
 jumlah profil atau jalankan di mesin yang lebih ringan.
+
+**Bot tidak menyerang mob**
+Cek `combat.enabled = true`, naikkan `combat.range` (default 12 blok), dan pastikan mob-nya
+memang tipe hostile. Kalau hanya ingin jenis tertentu, pakai `combat.whitelist`.
+Kalau mobnya muncul tapi tidak dipukul: jalankan `!attack` dan baca kolom `aksi`/`jarak`.
+`aksi=dekati` dengan `jarak` yang tidak pernah turun berarti bot tidak bergerak maju (mis.
+lokasi terhalang atau fitur lain sedang merebut kontrol gerak), sedangkan `aksi=serang`
+berarti bot sudah mengayun dan masalahnya di senjata/server.
+`stats` menampilkan jumlah target yang dicoret (`stuck`) karena jaraknya tidak pernah
+mendekati — naikkan `combat.jumpWhenBlocked`, atau naikkan `combat.stuckTimeoutMs`/
+`combat.giveUpMs` kalau sering terhalang. Log `debug` menyebut alasan target dilewati
+(jarak, whitelist, `ignore`, atau blacklist).
+
+**Bot menyerang tapi tangan kosong / damage-nya kecil**
+Jalankan `!attack`: kolom `senjata` harus berisi nama pedang. Kalau `tangan kosong`, berarti
+tidak ada senjata sama sekali di tas (`!inv` untuk cek isi tas) atau `combat.ignore` menutup
+nama senjata itu. Kalau `senjata` sudah benar tapi damage tetap kecil, kemungkinan tangan
+kemudian disita barang lain (bot juga memakai tangan untuk makan/panen) — tunggu sampai
+`combat` selesai. Kalau nama senjata di `!attack` tidak pernah muncul padahal ada di tas,
+turunkan `logging.level` ke `debug`: log `tangan masih ... coba pegang ... lagi` muncul
+kalau server menolak equip tanpa error.
+
+**Lama banget kill mob**
+Turunkan `combat.attackCooldownMs` (default `100` = 10 CPS, `0` = spam tanpa jeda). Nilai ini
+sekali ini juga jadi periode loop saat mengayun, jadi `intervalMs` tidak perlu diubah.
+Kalau mau click rate-nya diacak seperti mod auto clicker, isi `combat.cpsMin`/`combat.cpsMax`
+(misal `8`/`14`) — satu menimpa jeda tetap, jadi `attackCooldownMs` boleh dipakai lagi
+begitu `cpsMin` dikosongkan lagi.
+
+**Bot tidak membeli apa-apa di shop**
+Cek nama item di `shop.items` sama persis dengan nama item Minecraft (`carrot`, bukan ` Wortel`).
+Kalau shop-nya berbasis perintah, ganti `shop.mode` ke `"command"`; kalau berbasis GUI, pastikan
+`shop.command` (mis. `/shop`) benar. Log level `debug` menampilkan alasan melewatinya slot.
+
+**Bot membuang barang penting**
+`shop.keep` adalah daftar nama item yang tidak pernah dibuang. Tambahkan barang yang mau
+disimpan, atau set `shop.dumpWhenFull = false` kalau inventory tidak boleh dikosongkan.
+
+**Bot tidak memanen lahan**
+Default bot mencari lahan sendiri di sekitar posisinya (`autoDiscover`, radius `searchRadius`). Kalau
+`farm.crops` tidak cocok, tidak ada apa-apa yang ketemu — filter menerima nama blok **atau** item
+tanaman (`carrots`/`carrot`, `wheat`/`wheat_seeds`). Naikkan `farm.searchRadius` kalau lahan jauh dari
+tempat bot berdiri, atau isi `farm.area` dengan koordinat lahan (bisa pakai titik tengah + radius, atau
+`bounds`/`corners` berbentuk kotak) supaya bot prioritas ke titik itu. `scanHeight` (default 2) mengatur
+tinggi scan; naikkan kalau lahannya ada di bawah atau bertingkat. Kalau bot harus berjalan ke lahan,
+`maxWalkDistance` (default `64`) membatasi perjalanan supaya tidak lari ke koordinat yang salah.
+Perintah `farm` di console menampilkan ringkasan scan terakhir, lahan yang ditemukan, dan pesan errornya.

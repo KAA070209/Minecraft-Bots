@@ -92,6 +92,15 @@ check('loadConfig applies env vars', envCfg.server.host === 'env.com' && envCfg.
 const inverted = loadConfig(['--afkInterval', '20000'], {});
 check('maxInterval never below minInterval', inverted.afk.maxIntervalMs >= inverted.afk.minIntervalMs);
 
+const boxCfg = loadConfig([], { MC_CONFIG_JSON: JSON.stringify({ farm: { enabled: true, area: { y: 62, bounds: { minX: '7986', maxX: 8084, minZ: 7507, maxZ: 7572 } } } }) });
+check('farm.area.bounds coerced to numbers', boxCfg.farm.area.bounds.minX === 7986 && boxCfg.farm.area.bounds.maxZ === 7572, JSON.stringify(boxCfg.farm.area.bounds));
+let boundsThrew = false;
+try { loadConfig([], { MC_CONFIG_JSON: JSON.stringify({ farm: { area: { y: 62, bounds: { minX: 0 } } } }) }); } catch { boundsThrew = true; }
+check('incomplete farm.area.bounds rejected', boundsThrew);
+let wideThrew = false;
+try { loadConfig([], { MC_CONFIG_JSON: JSON.stringify({ farm: { area: { y: 62, bounds: { minX: 0, maxX: 5000, minZ: 0, maxZ: 10 } } } }) }); } catch { wideThrew = true; }
+check('farm.area.bounds wider than 256 rejected', wideThrew);
+
 check('formatDuration seconds', formatDuration(5000) === '5s', formatDuration(5000));
 check('formatDuration minutes', formatDuration(65000) === '1m 5s', formatDuration(65000));
 check('formatDuration hours', formatDuration(3725000) === '1h 2m 5s', formatDuration(3725000));

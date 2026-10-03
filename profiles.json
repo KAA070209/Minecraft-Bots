@@ -22,6 +22,39 @@
       "autoEat": true,
       "rescue": true
     },
+    "combat": {
+      "enabled": true,
+      "range": 12,
+      "approach": true,
+      "attackRange": 3,
+      "attackCooldownMs": 100,
+      "cpsMin": 8,
+      "cpsMax": 14,
+      "retreatBelowHealth": 6
+    },
+    "shop": {
+      "enabled": false,
+      "mode": "gui",
+      "command": "/shop",
+      "items": ["carrot", "wheat", "cooked_beef"],
+      "amount": 64,
+      "intervalMs": 300000,
+      "dumpWhenFull": true
+    },
+    "farm": {
+      "enabled": true,
+      "autoDiscover": true,
+      "searchRadius": 32,
+      "area": { "x": 0, "y": 64, "z": 0, "radius": 8 },
+      "crops": ["carrots"],
+      "scanHeight": 2,
+      "walkToRadius": 24,
+      "maxPerCycle": 0,
+      "cropWalkSteps": 0,
+      "chaseRange": 0,
+      "pathRadius": 24,
+      "replant": true
+    },
     "reconnect": {
       "autoReconnect": true,
       "baseMs": 10000
@@ -42,7 +75,7 @@
       "soloWindowMs": 10000,
       "storeFile": "logs/chatgame-memory-{username}.json",
       "mathFirst": true,
-      "debugRaw": true
+      "debugRaw": false
     }
   },
   "profiles": [
@@ -60,10 +93,6 @@
     {
       "name": "VBIFERSS",
       "password": "manusia"
-    },
-    {
-      "name": "KaaXz",
-      "password": "Azka1234"
     }
   ]
 }

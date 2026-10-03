@@ -8,6 +8,7 @@ const { loadConfig } = require('./lib/config');
 const { createLogger, formatDuration } = require('./lib/logger');
 const { createRunner } = require('./lib/runner');
 const { manualWalk, manualStop } = require('./lib/behaviors');
+const { inventoryReport } = require('./lib/inventory');
 const { solveOnce } = require('./lib/chatgame');
 
 const consoleLogger = {
@@ -192,6 +193,15 @@ function main() {
     'walk <nama> <arah> [ms]  gerakkan satu bot',
     'walkall <arah> [ms]      gerakkan semua bot aktif',
     'halts <nama>     hentikan gerakan satu bot',
+    'attack [nama] [on|off]   pukul mob otomatis (off/stop = berhenti menyerang)',
+    'buy <nama>        beli item shop di satu bot',
+    'dump <nama>       buang isi inventory satu bot',
+    'inv <nama> [filter] [max]  lihat isi inventory satu bot',
+    'invall [filter]   lihat isi inventory semua bot aktif',
+    'harvest <nama>    panen lahan di satu bot',
+    'harvest <nama> stop   batalkan panen yang sedang jalan',
+    'farm <nama> [on|off]  status/nyalakan auto-panen satu bot',
+    'stopall           hentikan panen + pukul mob semua bot',
     'restart <nama>    paksa sambung ulang satu bot',
     'stop <nama>       hentikan satu bot',
     'start <nama>      jalankan satu bot lagi',
@@ -282,6 +292,111 @@ function main() {
               results.push(`${target.name}=${result.ok ? `${result.state} ${result.ms}ms` : 'gagal'}`);
             }
             process.stdout.write(`\n${results.join(' | ')}\n\n`);
+            break;
+          }
+          case 'attack':
+          case 'buy':
+          case 'dump':
+          case 'harvest': {
+            if (!record) { process.stdout.write('\nprofil tidak ditemukan\n\n'); break; }
+            const agent = command.toLowerCase() === 'attack'
+              ? record.runner.state.combat
+              : command.toLowerCase() === 'dump'
+                ? record.runner.state.shop
+                : command.toLowerCase() === 'harvest'
+                  ? record.runner.state.farm
+                  : record.runner.state.shop;
+            if (!agent) { process.stdout.write(`\n${record.name}: fitur belum siap\n\n`); break; }
+            if (command.toLowerCase() === 'attack') {
+              const mode = String(rest[1] || '').toLowerCase();
+              if (mode === 'on') agent.setEnabled(true);
+              else if (mode === 'off' || mode === 'stop') agent.stop();
+              process.stdout.write(
+                `\n${record.name}: pukul mob ${agent.enabled ? 'ON' : 'OFF'} | ` +
+                `aksi=${agent.stats.action || 'idle'} jarak=${agent.stats.distance ?? '-'} | ` +
+                `senjata=${agent.weapon || 'tangan kosong'} | serangan=${agent.stats.attacks} knock=${agent.stats.kills}\n\n`
+              );
+              break;
+            }
+            if (command.toLowerCase() === 'harvest' && ['stop', 'cancel', 'batal', 'off', 'berhenti'].includes(String(rest[1] || '').toLowerCase())) {
+              const aborted = agent.abortHarvest();
+              process.stdout.write(
+                `\n${record.name}: ${aborted ? 'panen dibatalkan' : `tidak ada panen berjalan (auto-panen ${agent.enabled ? 'ON' : 'OFF'})`}\n\n`
+              );
+              break;
+            }
+            const result = command.toLowerCase() === 'dump'
+              ? agent.dump()
+              : command.toLowerCase() === 'harvest'
+                ? agent.harvest()
+                : agent.buy();
+            result
+              .then((value) => process.stdout.write(`\n${record.name}: ${JSON.stringify(value)}\n\n`))
+              .catch((err) => process.stdout.write(`\n${record.name}: gagal - ${err.message}\n\n`));
+            break;
+          }
+          case 'farm': {
+            if (!record) { process.stdout.write('\nprofil tidak ditemukan\n\n'); break; }
+            const farm = record.runner.state.farm;
+            if (!farm) { process.stdout.write(`\n${record.name}: fitur belum siap\n\n`); break; }
+            const mode = String(rest[1] || '').toLowerCase();
+            if (mode === 'on') farm.setEnabled(true);
+            else if (mode === 'off' || mode === 'stop') farm.stop();
+            else if (mode === 'stop-cycle' || mode === 'batal') farm.abortHarvest();
+            const info = farm.status();
+            process.stdout.write(
+              `\n${record.name}: auto-panen ${info.enabled ? 'ON' : 'OFF'}` +
+              `${info.harvesting ? ' (sedang panen)' : ''} | panen=${info.stats.harvests} wortel=${info.stats.carrots}\n` +
+              `area ${info.areaText || '-'} | ${info.crops} tanaman siap (jarak bot ${info.distance === null ? '-' : `${info.distance} blok`})\n\n`
+            );
+            break;
+          }
+          case 'stopall': {
+            for (const target of profiles) {
+              if (!target.runner) continue;
+              const st = target.runner.state;
+              const aborted = st.farm ? st.farm.abortHarvest() : false;
+              if (st.farm) st.farm.stop();
+              if (st.combat) st.combat.stop();
+              manualStop(st.bot);
+              process.stdout.write(
+                `\n${target.name}: berhenti total (panen ${aborted ? 'dibatalkan' : 'mati'}, pukul mob OFF, gerak berhenti)\n`
+              );
+            }
+            process.stdout.write('\n');
+            break;
+          }
+          case 'inv':
+          case 'invntori':
+          case 'inventory':
+          case 'invall': {
+            const all = command.toLowerCase() === 'invall';
+            const targets = all
+              ? profiles.filter((p) => p.runner && p.status !== 'stopped')
+              : record
+                ? [record]
+                : [];
+            if (!targets.length) {
+              process.stdout.write(all ? '\ntidak ada bot aktif\n\n' : '\nprofil tidak ditemukan\n\n');
+              break;
+            }
+            for (const target of targets) {
+              const bot = target.runner && target.runner.state.bot;
+              if (!bot || !bot.inventory) {
+                process.stdout.write(`\n${target.name}: belum punya koneksi\n`);
+                continue;
+              }
+              const args = all ? rest : rest.slice(1);
+              const limit = Number(args[args.length - 1]);
+              const hasLimit = args.length > 0 && Number.isFinite(limit) && limit > 0;
+              const report = inventoryReport(bot, {
+                query: (hasLimit ? args.slice(0, -1) : args).join(' '),
+                limit: hasLimit ? limit : undefined
+              });
+              const body = report.lines.map((line) => `  ${line}`).join('\n');
+              process.stdout.write(`\n${target.name}\n${body}\n`);
+            }
+            process.stdout.write('\n');
             break;
           }
           case 'restart':
