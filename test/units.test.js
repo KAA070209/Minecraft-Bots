@@ -337,6 +337,48 @@ process.stdout.write('[units] kontrol gerak manual\n');
     ['forward', 'back', 'left', 'right', 'jump'].every((k) => Object.values(DIRECTIONS).includes(k)));
 }
 
+// -- Choosing start mode (npm start) and reading .env.local --
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { chooseTarget, countProfiles } = require('../start.js');
+
+const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-start-'));
+const profilesPath = path.join(tmpRoot, 'profiles.json');
+
+fs.writeFileSync(profilesPath, JSON.stringify({ profiles: [{ name: 'a' }, { name: 'b' }] }));
+check('start: dua profil di file -> multi', chooseTarget({ env: {}, root: tmpRoot }) === 'multi.js');
+check('countProfiles menghitung profil aktif', countProfiles(profilesPath) === 2);
+
+fs.writeFileSync(profilesPath, JSON.stringify({ profiles: [{ name: 'a' }, { name: 'b', enabled: false }] }));
+check('start: profil nonaktif diabaikan', chooseTarget({ env: {}, root: tmpRoot }) === 'index.js');
+
+fs.writeFileSync(profilesPath, '{bukan json');
+check('start: file profil rusak -> single', chooseTarget({ env: {}, root: tmpRoot }) === 'index.js');
+
+const emptyRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-start-kosong-'));
+check('start: tanpa profil -> single', chooseTarget({ env: {}, root: emptyRoot }) === 'index.js');
+check('start: MC_MODE=single dipaksa', chooseTarget({ env: { MC_MODE: 'single' }, root: tmpRoot }) === 'index.js');
+check('start: MC_MODE=multi dipaksa', chooseTarget({ env: { MC_MODE: 'multi' }, root: emptyRoot }) === 'multi.js');
+check('start: MC_PROFILES_JSON -> multi walau satu', chooseTarget({ env: { MC_PROFILES_JSON: '{"profiles":[{"name":"a"}]}' }, root: emptyRoot }) === 'multi.js');
+check('start: PROFILES_JSON alias -> multi', chooseTarget({ env: { PROFILES_JSON: '{"profiles":[{"name":"a"},{"name":"b"}]}' }, root: emptyRoot }) === 'multi.js');
+fs.rmSync(tmpRoot, { recursive: true, force: true });
+fs.rmSync(emptyRoot, { recursive: true, force: true });
+
+// .env.local dibaca sebagai sumber setting lokal; environment asli menang.
+const envLocalPath = path.join(__dirname, '..', '.env.local.uji');
+fs.writeFileSync(envLocalPath, 'MC_API=1\nMC_API_TOKEN=token-file\nMC_API_PORT=8899\n');
+const fromLocal = loadConfig([], { MC_ENV_FILE: envLocalPath });
+check('.env.local menyalakan api', fromLocal.api.enabled === true);
+check('.env.local dibaca', fromLocal.api.token === 'token-file' && fromLocal.api.port === 8899, String(fromLocal.api.port));
+const overridden = loadConfig([], { MC_ENV_FILE: envLocalPath, MC_API_PORT: '7777' });
+check('environment asli menang atas .env.local', overridden.api.port === 7777, String(overridden.api.port));
+const tokenOverridden = loadConfig([], { MC_ENV_FILE: envLocalPath, MC_API_TOKEN: 'token-env' });
+check('token env menimpa token file', tokenOverridden.api.token === 'token-env');
+const noEnvFile = loadConfig([], { MC_ENV_FILE: envLocalPath, MC_NO_ENV_FILE: '1' });
+check('MC_NO_ENV_FILE mematikan .env.local', noEnvFile.api.enabled === false && noEnvFile.api.token === null);
+fs.unlinkSync(envLocalPath);
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\n[units] ${results.length - failed.length}/${results.length} passed`);
 process.exit(failed.length ? 1 : 0);

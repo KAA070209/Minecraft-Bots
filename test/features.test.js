@@ -2240,7 +2240,7 @@ function finish() {
   const failed = results.filter((r) => !r.ok);
   process.stdout.write('\n');
   process.stdout.write(`[features] ${results.length - failed.length}/${results.length} passed\n`);
-  process.exitCode = failed.length ? 1 : 0;
+  process.exit(failed.length ? 1 : 0);
 }
 
 Promise.all(pending).then(finish, (err) => {

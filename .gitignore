@@ -6,3 +6,10 @@ sessions/
 nmp-cache/
 *.log
 profiles.local.json
+discord-bot/.env
+
+# Token API dan setting lokal - jangan ikut ter-commit.
+.env.local
+
+# Berisi password akun Minecraft - jangan pernah masuk git.
+profiles.json

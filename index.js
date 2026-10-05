@@ -4,6 +4,7 @@ const { loadConfig } = require('./lib/config');
 const { createLogger } = require('./lib/logger');
 const { createRunner } = require('./lib/runner');
 const { attachConsole } = require('./lib/console');
+const { startControlApi } = require('./lib/api');
 
 function main() {
   const config = loadConfig();
@@ -23,10 +24,29 @@ function main() {
 
   state.rl = attachConsole({ config, logger, state });
 
+  let api = null;
+  startControlApi({
+    config,
+    logger,
+    getTargets: () => [
+      {
+        name: config.account.username,
+        status: state.status,
+        register: state.registerStatus,
+        joins: state.joins,
+        runner,
+        config
+      }
+    ]
+  }).then((server) => {
+    api = server;
+  });
+
   let stopping = false;
   async function shutdown(reason = 'dimatikan manual') {
     if (stopping) return;
     stopping = true;
+    if (api) await api.close().catch(() => {});
     await runner.shutdown(reason);
     logger.close();
     process.exit(0);

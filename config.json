@@ -85,5 +85,6 @@
   },
   "reconnect": { "baseMs": 6000, "maxMs": 180000, "factor": 1.8, "jitter": 0.3, "maxAttempts": 0, "afkKickExtraMs": 90000 },
   "logging": { "level": "info", "file": "./logs/afk-bot.log", "color": true, "logChat": true, "maxLogFileBytes": 5242880 },
-  "console": { "enabled": true, "commandPrefix": "!" }
+  "console": { "enabled": true, "commandPrefix": "!" },
+  "api": { "enabled": false, "host": "127.0.0.1", "port": 8787, "token": null, "logRequests": true }
 }

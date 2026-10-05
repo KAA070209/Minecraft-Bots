@@ -1,0 +1,15 @@
+{
+  "name": "mc-afk-bot-discord",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Discord bridge untuk mc-afk-bot: menerjemahkan perintah Discord menjadi request ke HTTP control API",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test/commands.test.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0"
+  }
+}

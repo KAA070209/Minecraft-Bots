@@ -7,6 +7,7 @@ const { loadProfiles } = require('./lib/profiles');
 const { loadConfig } = require('./lib/config');
 const { createLogger, formatDuration } = require('./lib/logger');
 const { createRunner } = require('./lib/runner');
+const { startControlApi } = require('./lib/api');
 const { manualWalk, manualStop } = require('./lib/behaviors');
 const { inventoryReport } = require('./lib/inventory');
 const { solveOnce } = require('./lib/chatgame');
@@ -96,7 +97,46 @@ function main() {
     `password: ${passwords.size === 1 ? [...passwords][0] : passwords.size + ' variasi (ti profil pakai password sendiri)'}\n\n`
   );
 
+  let api = null;
   let shuttingDown = false;
+
+  // Config API dibaca terpisah dari config tiap profil: satu proses multi hanya
+  // membuka satu server kontrol, bukan satu per bot.
+  let apiSettings = { enabled: false };
+  try {
+    apiSettings = loadConfig(process.argv.slice(2)).api;
+  } catch (err) {
+    process.stdout.write(`api kontrol tidak dijalankan: ${err.message}\n`);
+  }
+
+  startControlApi({
+    config: { api: apiSettings },
+    logger: {
+      info: (m) => process.stdout.write(`${m}\n`),
+      warn: (m) => process.stdout.write(`${m}\n`),
+      success: (m) => process.stdout.write(`${m}\n`),
+      error: (m) => process.stdout.write(`${m}\n`),
+      debug: () => {},
+      plain: (m) => process.stdout.write(`${m}\n`)
+    },
+    getTargets: () =>
+      profiles.map((record) => ({
+        name: record.name,
+        status: record.status,
+        register: record.register,
+        joins: record.joins,
+        runner: record.runner,
+        config: record.config,
+        profile: record.profile,
+        error: record.error
+      }))
+  })
+    .then((server) => {
+      api = server;
+    })
+    .catch((err) => {
+      process.stdout.write(`api kontrol gagal dijalankan: ${err.message}\n`);
+    });
 
   for (const [index, profile] of active.entries()) {
     const profileConfig = JSON.parse(JSON.stringify(profile.config || {}));
@@ -123,6 +163,7 @@ function main() {
       joins: 0,
       register: 'pending',
       runner: null,
+      config,
       error: null
     };
     profiles.push(record);
@@ -484,6 +525,7 @@ function main() {
   async function shutdown(code) {
     if (shuttingDown) return;
     shuttingDown = true;
+    if (api) await api.close().catch(() => {});
     const active = profiles.filter((p) => p.runner && p.status !== 'stopped');
     process.stdout.write(`\nmenghentikan ${active.length} bot...\n`);
     await Promise.all(active.map((p) => p.runner.shutdown('shutdown multi').catch(() => {})));

@@ -180,6 +180,70 @@ npm run multi -- --statusEvery 30000          # interval tabel status (ms)
 
 Bot yang sudah di-`stop` perlu jalankan ulang `npm run multi`.
 
+## Kontrol dari Discord
+
+Bot Minecraft yang sudah jalan di hosting bisa dikontrol dari Discord tanpa menyentuh
+terminal. Discord bot **tidak** bicara langsung ke server Minecraft; dia mengirim
+request ke HTTP control API kecil milik proses bot, jadi proses Minecraft tidak perlu
+tahu apa-apa soal Discord dan tidak ikut mati kalau Discord-nya error.
+
+```
+Discord -> discord-bot (discord.js) -> HTTP + token -> lib/api.js -> lib/control.js -> bot Minecraft
+```
+
+Nyalakan API di config.json:
+
+```json
+"api": { "enabled": true, "host": "127.0.0.1", "port": 8787, "token": "token-acak-panjang", "logRequests": true }
+```
+
+`api.enabled=true` tanpa `api.token` akan **menolak start** — API ini bisa menyalakan,
+memanen, dan mematikan bot, jadi tidak boleh dibuka tanpa token. Kalau Discord bot
+berjalan di mesin lain, pakai SSH tunnel supaya API tidak terekspos:
+
+```bash
+ssh -N -L 8787:127.0.0.1:8787 user@host-bot
+```
+
+Lalu service Discord-nya:
+
+```bash
+cd discord-bot
+npm install
+copy .env.example .env   # isi DISCORD_TOKEN + MC_API_TOKEN
+npm start
+```
+
+Panduan lengkap (buat bot di Developer Portal, izin role, daftar perintahnya) ada di
+[`discord-bot/README.md`](discord-bot/README.md). Ringkasnya:
+
+| Perintah Discord | Fungsi |
+| --- | --- |
+| `!status` / `!status <nama>` | status semua bot / satu bot |
+| `!pos`, `!stats`, `!inv [nama] [filter]`, `!invall` | posisi, statistik, isi inventory |
+| `!attack [nama\|all] [on\|off]`, `!buy`, `!dump` | pukul mob, beli shop, buang tas |
+| `!harvest`, `!harveststop`, `!farm`, `!farmon`, `!farmoff` | panen lahan dan auto-panen |
+| `!say <nama> <pesan>`, `!sayall <pesan>` | chat dari bot |
+| `!walk`, `!look`, `!halts`, `!idle`, `!eat`, `!rescue` | kendali gerak dan survival |
+| `!stop`, `!restart`, `!shutdown <nama> confirm` | hentikan/sambung ulang/matikan |
+
+Nama bot boleh diisi `all` untuk semua bot, dan perintah tanpa nama tetap berlaku untuk
+semua bot (`!attack on` = nyalakan pukul mob di semua bot). `npm run multi` membuka satu
+API saja untuk semua profil, jadi `all` berarti semua akun di `profiles.json`.
+
+### Endpoint API
+
+| Method | Endpoint | Isi |
+| --- | --- | --- |
+| `GET` | `/health` | hidup/mati API (tanpa token, buat cek koneksi) |
+| `GET` | `/api/status` | status semua bot |
+| `GET` | `/api/commands` | daftar perintah yang tersedia |
+| `POST` | `/api/command` | `{ "line": "attack jack01 on" }` — satu baris perintah console |
+
+Semua endpoint selain `/health` wajib kirim `Authorization: Bearer <api.token>` (atau
+`?token=`). Ada rate limit 60 request per 10 detik per IP, dan setiap request dicatat di
+log kalau `api.logRequests=true`.
+
 ## Konfigurasi
 
 ### `account`
@@ -454,6 +518,16 @@ perintah `farm` di console: area yang dipakai, jarak bot ke lahan, jumlah tanama
 `crops`, lahan yang ditemukan, dan error terakhir. Kalau muncul "tidak ada tanaman", naikkan
 `farm.scanHeight` atau `farm.searchRadius`, atau cek koordinat `area.y` dengan `pos`.
 
+### `api` (kontrol dari Discord)
+
+| Opsi | Default | Keterangan |
+| --- | --- | --- |
+| `enabled` | `false` | `true` = buka HTTP control API untuk `discord-bot` |
+| `host` | `"127.0.0.1"` | alamat listen; pakai `0.0.0.0` hanya kalau API dipasang di belakang reverse proxy + firewall |
+| `port` | `8787` | port API |
+| `token` | `null` | token bearer wajib; `enabled=true` tanpa token membuat proses menolak start |
+| `logRequests` | `true` | catat tiap request (method, path, IP, kode, durasi) |
+
 ### `reconnect`
 
 | Opsi | Default | Keterangan |
@@ -486,17 +560,92 @@ node index.js --host server.com --port 25565 --username jack01 --afk wander
 node index.js --register register --registerPassword rahasia
 node index.js --noRegister --log debug --noFile
 node index.js --combat --shop /shop --farm
+node index.js --api --apiPort 8787 --apiToken token-acak-panjang
 ```
 
 ```
 MC_HOST, MC_PORT, MC_USERNAME, MC_VERSION, MC_REGISTER_MODE, MC_REGISTER_PASSWORD,
 MC_NO_REGISTER, MC_LOG_LEVEL, MC_AFK_MODE, MC_AFK_INTERVAL, MC_COMBAT, MC_SHOP,
-MC_SHOP_COMMAND, MC_FARM, MC_CONFIG, MC_CONFIG_JSON
+MC_SHOP_COMMAND, MC_FARM, MC_CONFIG, MC_CONFIG_JSON, MC_API, MC_API_HOST, MC_API_PORT,
+MC_API_TOKEN
 ```
 
 `MC_CONFIG` menunjuk file JSON lain; `MC_CONFIG_JSON` menerima objek JSON langsung (dipakai
 orkestrator untuk menimpa config per profil). `--combat`, `--shop <perintah>`, dan `--farm`
-menyalakan fitur tanpa mengubah file config.
+menyalakan fitur tanpa mengubah file config. `MC_API*`/`--api*` menyalakan HTTP control
+API tanpa mengubah file config juga.
+
+`MC_PROFILES_JSON` menerima isi `profiles.json` langsung sebagai JSON, jadi di hosting
+tidak perlu file profil sama sekali dan password tidak pernah masuk git.
+
+## Deploy ke Railway
+
+Dua service terpisah dari repo yang sama: satu untuk bot Minecraft, satu untuk bridge
+Discord. Satu service tidak cukup karena masing-masing proses menahan koneksi ke luar
+sendiri (bot ke server Minecraft, bridge ke gateway Discord) tanpa batas waktu.
+
+### 1. Deploy bot Minecraft
+
+`New Project → Deploy from GitHub repo`, lalu **tambahkan service kedua** dari repo yang
+sama untuk bridge Discord (lihat langkah 2).
+
+Environment variables untuk service bot Minecraft:
+
+```
+MC_PROFILES_JSON={"profiles":[{"name":"AzkaSaadi","password":"..."},{"name":"TharXz","password":"..."},{"name":"VBIFERSS","password":"..."}]}
+MC_API=1
+MC_API_TOKEN=token-acak-panjang-kau-pilih
+MC_HOST=minesive.com
+MC_PORT=25565
+```
+
+`railway.json` di root sudah mengurus build, start command, dan healthcheck. API
+otomatis bind ke `0.0.0.0` dan memakai `PORT` yang diberikan Railway kalau
+`RAILWAY_ENVIRONMENT` terdeteksi, jadi `MC_API_HOST`/`MC_API_PORT` tidak perlu diisi.
+
+`api.host=0.0.0.0` tanpa `MC_API_TOKEN` akan ditolak saat start, supaya API yang bisa
+menyalakan/mematikan bot tidak pernah terbuka ke internet tanpa token.
+
+Generate domain publik di tab **Settings → Networking → Generate Domain** supaya service
+bot Minecraft bisa dijangkau dari luar. Railway memutus koneksi yang idle di plan trial,
+jadi kalau proses bot terlalu lama diam, Railway menutup sesi TCP-nya, dan bot baru
+menyambung kembali setelah fase reconnect.
+
+### 2. Konfigurasi bridge Discord
+
+Tambahkan service baru dari repo yang sama, lalu set **Root Directory** ke
+`discord-bot` dan **Start Command** ke `node discord-bot/index.js` (atau pakai
+`discord-bot/railway.json`). Railway membaca `railway.json` di root service, jadi kalau
+root directory-nya `discord-bot`, file itu ikut terbaca.
+
+Environment variables untuk service Discord:
+
+```
+DISCORD_TOKEN=token-dari-tab-Bot-di-developer-portal
+MC_API_TOKEN=token-yang-sama-pakai-dengan-service-bot-minecraft
+MC_API_URL=https://domain-publik-bot-minecraft.up.railway.app
+DISCORD_ALLOWED_CHANNELS=1556713848944201828
+```
+
+`MC_API_TOKEN` harus identik dengan milik service bot Minecraft. Kalau berbeda, bridge
+dapat `401` dan setiap perintah dibalas "token tidak valid".
+
+Railway hanya menjangkau service lewat HTTP, bukan folder, jadi env var adalah satu-satunya
+cara mengonfigurasi bridge di sana. `.env` tetap dipakai untuk pemakaian lokal.
+
+### 3. Checklist setelah deploy
+
+```
+[service bot]     log: api kontrol listen di http://0.0.0.0:xxxx
+[service bot]     curl domain-publik/health            -> {"ok":true,...}
+[service Discord] log: discord login sebagai bot-mineflayer#0371
+[service Discord] log:   server: <nama server>
+[service Discord] log:   channel diizinkan: 1556713848944201828
+[service Discord] log: api bot Minecraft hidup di https://... (3 bot: ...)
+```
+
+Kalau service Discord mencetak "bot belum masuk ke server Discord mana pun", berarti bot
+belum diundang ke server kamu — lihat bagian Kontrol dari Discord untuk cara invite-nya.
 
 ## Struktur file
 
@@ -510,6 +659,8 @@ lib/config.js       load config + merge CLI/env
 lib/runner.js       logika satu bot: koneksi, event, reconnect, shutdown
 lib/register.js     auto-register / auto-login
 lib/profiles.js     load + validasi file profil
+lib/control.js      satu mesin perintah untuk semua bot (dipakai API kontrol + Discord)
+lib/api.js          HTTP control API untuk discord-bot (token + rate limit)
 lib/behaviors.js    anti-AFK, auto-makan, penyelamatan
 lib/combat.js       pukul mob otomatis + pilih senjata
 lib/shop.js         beli shop otomatis + buang inventory saat penuh
@@ -518,14 +669,17 @@ lib/farm.js         panen lahan + ambil drop + tanam ulang
 lib/backoff.js      exponential backoff + jitter
 lib/console.js      perintah console interaktif
 lib/logger.js       log bertimestamp ke terminal + file
+discord-bot/        service Discord.js terpisah (prefix commands -> HTTP API)
 ```
 
 ## Test
 
 ```bash
-npm test                 # unit + features + integration
+npm test                 # unit + features + control/API + integration
 npm run test:units       # fungsi murni
 npm run test:features    # pukul mob, shop, inventory, panen, config (425 test)
+npm run test:control     # lib/control.js + lib/api.js (54 test, HTTP lokal)
+npm run test:discord     # parsing perintah + embed discord-bot (89 test)
 npm run test:register    # logika auto-register (53 test)
 npm run test:integration # reconnect + mode AFK
 npm run test:register-live # register sungguhan lewat server lokal (17 test)
@@ -536,6 +690,29 @@ Semua test memakai server Minecraft lokal palsu (`test/local-server.js`) dengan 
 AuthMe (`TEST_REQUIRE_AUTH=1`), tidak menyentuh server nyata.
 
 ## Troubleshooting
+
+**Discord tidak menjawab sama sekali**
+Bot Discord butuh intent `Message Content` aktif (**Bot → Privileged Gateway Intents**),
+dan role-nya harus punya izin View Channel, Send Messages, Read Message History, dan
+Embed Links.
+
+**Discord jawab "tidak bisa menghubungi API"**
+Proses bot Minecraft belum jalan dengan `api.enabled=true`, atau `MC_API_URL` di
+`discord-bot/.env` tidak cocok dengan `api.host`/`api.port`. Cek cepat dari mesin Discord:
+
+```bash
+curl http://127.0.0.1:8787/health
+curl -H "Authorization: Bearer <token>" http://127.0.0.1:8787/api/status
+```
+
+**Discord jawab "token tidak valid"**
+`MC_API_TOKEN` di `discord-bot/.env` harus sama persis dengan `api.token` di
+`config.json` proses bot.
+
+**API tidak mau start**
+`api.enabled=true` tanpa `api.token` sengaja ditolak (proses berhenti dengan pesan jelas),
+dan port yang sudah dipakai proses lain akan muncul sebagai
+`api kontrol gagal listen: EADDRINUSE`.
 
 **Bot tidak daftar dan langsung kicked**
 `register.mode` mungkin salah, atau perintah `/register` tidak ada di server. Cek log: akan ada
