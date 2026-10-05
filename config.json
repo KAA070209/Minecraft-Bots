@@ -32,7 +32,7 @@
     "attackCooldownMs": 100,
     "cpsMin": 8,
     "cpsMax": 14,
-    "aimHeight": 1.0,
+    "aimHeight": 0.8,
     "equipRetryMs": 1000,
     "retreatBelowHealth": 6,
     "jumpWhenBlocked": true,

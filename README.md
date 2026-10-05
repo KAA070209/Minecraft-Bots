@@ -238,9 +238,11 @@ kepala. Bot hanya melangkah ke blok yang di atasnya ada block solid, jadi tidak 
 | `enabled` | `false` | `true` = pukul mob hostile secara otomatis |
 | `range` | `12` | jangkauan cari target (blok) |
 | `attackRange` | `3` | jarak mulai mengayun pedang |
-| `intervalMs` | `500` | kecepatan polling keputusan (cari target / mendekat) |
-| `attackCooldownMs` | `100` | jeda antarayunan saat mob dalam jangkauan; ini juga CPS (`100` = 10 CPS, `0` = spam) |
+| `approach` | `true` | `false` = bot tidak pernah bergerak: mob yang terlihat langsung dipukul dari posisi bot sekarang, bahkan kalau belum masuk jangkauan, dan tidak pernah masuk daftar target yang dicoret karena "tidak bisa didekati" |
+| `intervalMs` | `500` | jeda scan keputusan (cari target / mendekat). Ini tetap periode loop, bukan jeda ayunan |
+| `attackCooldownMs` | `100` | jeda antarayunan (`100` = 10 CPS, `0` = spam tanpa jeda, dibatasi 40 CPS) |
 | `cpsMin` / `cpsMax` | `null` | `null` = click rate tetap dari `attackCooldownMs`. Kalau diisi, jeda tiap klik **diacak** di antara `cpsMin` dan `cpsMax` (persis seperti mod auto clicker), jadi pola ayunan tidak terlihat tetap: `{ "cpsMin": 8, "cpsMax": 14 }` = acak 8-14 klik/detik. Batas tersirat 0,5-40 CPS |
+| `aimHeight` | `0.8` | tinggi bidikan di atas kaki mob (blok): `0` = kaki, `0.8` = bagian bawah badan. Nilai ini selalu dijepit supaya tidak keluar dari hitbox mob |
 | `equipRetryMs` | `1000` | jeda sebelum equip diulang kalau server tidak menaruh senjata di tangan |
 | `retreatBelowHealth` | `6` | HP <= nilai ini → berhenti menyerang untuk regen; `0` = nonaktif |
 | `jumpWhenBlocked` | `true` | target yang belum bisa didekati dan jaraknya tidak mengecil → coba lompat sekali sebelum menyerah |
@@ -264,16 +266,27 @@ klik ke server dan kalau ditunggu, ayunan pertama sampai dengan tangan kosong. K
 tanpa benar-benar menaruh senjata di tangan, `equipRetryMs` mengatur kapan percobaan
 berikutnya dilakukan. `!attack` menampilkan senjata yang sedang dipegang.
 
-Selama mob dalam jangkauan, loop tidak ikut jeda `intervalMs`: periodenya memerah jadi
-`attackCooldownMs`, jadi bot mengayun terus seperti auto clicker (`100` ms = 10 CPS, `0`
-= tanpa jeda, dibatasi 40 CPS). Mob yang jaraknya masih jauh dikejar sambil berlari;
-target yang tidak bisa didekati (terhalang, atau beda tinggi/jauh) dilompati lalu dicoret
-supaya bot tidak nyangkut.
+Periode loop combat tetap `intervalMs`; yang menentukan kecepatan ayunan bukan timer
+itu tapi physics tick Mineflayer (sekitar 50 ms), jadi `attackCooldownMs`/`cpsMin`-
+`cpsMax` mengatur selisih antarayunan tanpa ikut mengubah jeda scan (`100` ms =
+10 CPS, `0` = tanpa jeda, dibatasi 40 CPS). Mob yang jaraknya masih jauh dikejar
+sambil berlari; target yang tidak bisa didekati (terhalang, atau beda tinggi/jauh)
+dilompati lalu dicoret supaya bot tidak nyangkut.
+
+Ayunan tidak boleh mendahului rotasi. Tiap ayunan arahkan dulu kepala ke
+`aimHeight` di atas kaki mob, lalu paket `look` dikirim di physics tick itu juga
+dan ayunan menyusul setelah paket itu keluar. Kalau ayunan dikirim duluan, server
+masih memakai arah pandang dari tick sebelumnya dan damage-nya 0 padahal animasi mengayun.
+Karena itu `combat.interval` (yang ditampilkan `!attack`) adalah jeda acak
+sekaligus periode loop, bukan jeda ayunan. Ayunan pertama begitu target terkunci
+tetap langsung dikirim, kecuali `approach: false` dengan mob yang sudah di
+jangkauan: di mode diam itu ayunan pertama dititipkan ke physics tick berikutnya, dan
+ayunan setelahnya tetap jalan di tick biasa supaya tempo mengayun tidak melambat.
 
 `cpsMin`/`cpsMax` mengubah jeda tetap jadi jeda acak, persis seperti mod auto clicker
 yang tidak mengklik dengan kecepatan selalu sama: setiap klik ambil angka random antara
-`1000/cpsMax` dan `1000/cpsMin` ms. Angka undian itu dipakai dua kali (sebagai cooldown
-pukul dan sebagai jeda loop berikutnya), bukan diundi dua kali, supaya CPS yang ditulis
+`1000/cpsMax` dan `1000/cpsMin` ms. Satu undian dipakai sebagai cooldown pukul yang
+diperiksa saat ayunan berikutnya mau dikirim, bukan diundi ulang, supaya CPS yang ditulis
 memang yang terjadi — kalau dihitung dua kali, jeda efektifnya jadi penjumlahan dua
 undian dan click rate asli selalu lebih rendah dari yang diminta. Yang diacak hanya jeda
 antarayunan; bergerak, lari, dan lompat tidak ikut berubah.
@@ -569,11 +582,14 @@ nama senjata itu. Kalau `senjata` sudah benar tapi damage tetap kecil, kemungkin
 kemudian disita barang lain (bot juga memakai tangan untuk makan/panen) — tunggu sampai
 `combat` selesai. Kalau nama senjata di `!attack` tidak pernah muncul padahal ada di tas,
 turunkan `logging.level` ke `debug`: log `tangan masih ... coba pegang ... lagi` muncul
-kalau server menolak equip tanpa error.
+kalau server menolak equip tanpa error. Kalau ayunan terasa jalan tapi mobnya jarang
+kena, cek `combat.aimHeight` (`0.8` = bagian bawah badan, selalu dijepit di dalam
+hitbox) — bidikan terlalu tinggi membuat crosshair keluar dari mob kecil seperti slime
+atau tupai.
 
 **Lama banget kill mob**
 Turunkan `combat.attackCooldownMs` (default `100` = 10 CPS, `0` = spam tanpa jeda). Nilai ini
-sekali ini juga jadi periode loop saat mengayun, jadi `intervalMs` tidak perlu diubah.
+hanya mengatur selisih antarayunan, jadi `intervalMs` (jeda scan) tidak perlu disentuh.
 Kalau mau click rate-nya diacak seperti mod auto clicker, isi `combat.cpsMin`/`combat.cpsMax`
 (misal `8`/`14`) — satu menimpa jeda tetap, jadi `attackCooldownMs` boleh dipakai lagi
 begitu `cpsMin` dikosongkan lagi.
