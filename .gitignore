@@ -13,3 +13,4 @@ discord-bot/.env
 
 # Berisi password akun Minecraft - jangan pernah masuk git.
 profiles.json
+MC_PROFILES_JSON.txt
