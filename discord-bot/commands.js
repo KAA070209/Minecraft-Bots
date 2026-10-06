@@ -1,6 +1,6 @@
 'use strict';
 
-const { COMMANDS } = require('../lib/control');
+const { API_COMMAND_NAMES } = require('./api-commands');
 
 const DISCORD_COMMANDS = [
   { name: 'help', aliases: ['bots'], usage: '!help', summary: 'daftar perintah', build: () => 'help' },
@@ -72,7 +72,7 @@ function parseMessage(content, prefix = '!') {
 }
 
 function isKnownApiCommand(name) {
-  return COMMANDS.some((command) => command.name === String(name).toLowerCase());
+  return API_COMMAND_NAMES.includes(String(name).toLowerCase());
 }
 
 module.exports = { DISCORD_COMMANDS, findCommand, parseMessage, isBotName, isKnownApiCommand };

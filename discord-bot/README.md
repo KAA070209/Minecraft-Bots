@@ -92,6 +92,33 @@ npm start
 Kalau Discord login tapi jawabannya "tidak bisa menghubungi API", berarti proses bot
 Minecraft belum jalan dengan `api.enabled=true` atau `MC_API_URL` salah.
 
+## Deploy ke Railway (repo sendiri)
+
+Kalau folder ini di-push sebagai repo sendiri (mis. `KAA070209/discord-bot-mc`), isi
+folder ini menjadi root repo, jadi `railway.json` memakai path relatif ke folder ini:
+
+```
+buildCommand  : npm ci --omit=dev
+startCommand  : node index.js
+```
+
+Jangan set **Root Directory** ke `discord-bot` di dashboard — untuk repo standalone
+folder itu sudah root-nya, dan mengisinya jadi `discord-bot/discord-bot` yang tidak ada
+lalu deploy gagal.
+
+Semua config lewat **environment variable** di dashboard, bukan `.env` (file `.env`
+di-ignore git dan tidak ikut ke image):
+
+```
+DISCORD_TOKEN=token-dari-tab-Bot-di-developer-portal
+MC_API_TOKEN=token-yang-sama-dengan-service-bot-minecraft
+MC_API_URL=https://domain-publik-bot-minecraft.up.railway.app
+DISCORD_ALLOWED_CHANNELS=1556713848944201828
+```
+
+Kalau `railway.json` di repo ternyata masih `node discord-bot/index.js`, itu sisa
+setting untuk repo monorepo dan deploy akan gagal dengan `Cannot find module`.
+
 ## Perintah
 
 `nama` = nama bot di server Minecraft (`jack01`, `AzkaSaadi`, ...), `all` = semua bot.

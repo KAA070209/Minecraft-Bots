@@ -1,0 +1,6 @@
+# Token Discord dan token API tidak boleh masuk git.
+.env
+.env.*
+!.env.example
+node_modules/
+npm-debug.log*

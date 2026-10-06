@@ -6,6 +6,27 @@ const path = require('path');
 const API_URL_KEYS = ['MC_API_URL', 'API_URL'];
 const API_TOKEN_KEYS = ['MC_API_TOKEN', 'API_TOKEN'];
 
+// Semua kunci yang boleh diisi lewat environment variable. Kalau salah satunya
+// ada di environment, file .env tidak diperlukan sama sekali.
+const CONFIG_KEYS = [
+  ...new Set([
+    'DISCORD_TOKEN',
+    'DISCORD_BOT_TOKEN',
+    ...API_URL_KEYS,
+    ...API_TOKEN_KEYS,
+    'DISCORD_PREFIX',
+    'DISCORD_ALLOWED_USERS',
+    'DISCORD_ALLOWED_ROLES',
+    'DISCORD_ALLOWED_CHANNELS',
+    'DISCORD_ALLOWED_GUILDS',
+    'DISCORD_REQUIRE_CONFIRM',
+    'MC_API_TIMEOUT_MS',
+    'DISCORD_MAX_LENGTH',
+    'DISCORD_COLOR',
+    'DISCORD_COLOR_ERROR'
+  ])
+];
+
 // .env dibaca relatif ke folder service ini, bukan ke folder kerja, supaya tetap
 // ketemu walau dijalankan dari folder lain (mis. dari root repo).
 const DEFAULT_ENV_FILE = path.join(__dirname, '.env');
@@ -54,7 +75,11 @@ function loadConfig(env = process.env, file = env.MC_ENV_FILE || DEFAULT_ENV_FIL
 
   return {
     envFile: file,
+    envFileExists: fs.existsSync(file),
+    // Kunci yang datang dari environment asli, bukan dari file .env. dipakai
+    // untuk membedakan "config salah" dari "file .env memang tidak perlu ada".
     envKeys: Object.keys(fileEnv),
+    fromEnvironment: CONFIG_KEYS.filter((key) => env[key] !== undefined && String(env[key]).trim() !== ''),
     discordToken: get(['DISCORD_TOKEN', 'DISCORD_BOT_TOKEN'], null),
     apiUrl: get(API_URL_KEYS, 'http://127.0.0.1:8787').replace(/\/+$/, ''),
     apiToken: get(API_TOKEN_KEYS, null),
@@ -74,18 +99,24 @@ function loadConfig(env = process.env, file = env.MC_ENV_FILE || DEFAULT_ENV_FIL
 function configErrors(config) {
   const errors = [];
   const file = config.envFile || DEFAULT_ENV_FILE;
-  if (!fs.existsSync(file)) {
-    errors.push(`file ${file} tidak ada - copy .env.example jadi .env dulu`);
+  const fromEnv = config.fromEnvironment || [];
+  const suppliedByEnv = fromEnv.length > 0;
+  // Di Railway/heroku tidak ada file .env sama sekali: semua config datang dari
+  // environment variable. Menolak start hanya karena file itu tidak ada akan
+  // menggagalkan deploy yang sebenarnya sudah benar.
+  if (!config.envFileExists && !suppliedByEnv) {
+    errors.push(`file ${file} tidak ada dan tidak ada config di environment variable`);
   }
+  const source = suppliedByEnv ? 'environment variable' : file;
   if (!config.discordToken) {
     errors.push(
-      `DISCORD_TOKEN belum diisi di ${file}` +
-      `${config.envKeys && config.envKeys.length ? ` (kunci yang terbaca: ${config.envKeys.join(', ')})` : ' (file terbaca tapi kosong)'}` +
+      `DISCORD_TOKEN belum diisi di ${source}` +
+      `${config.envKeys && config.envKeys.length && !suppliedByEnv ? ` (kunci yang terbaca dari file: ${config.envKeys.join(', ')})` : ''}` +
       ' - token ada di Developer Portal -> tab "Bot" -> Reset Token'
     );
   }
   if (!config.apiToken) {
-    errors.push(`MC_API_TOKEN belum diisi di ${file} (harus sama dengan MC_API_TOKEN di service bot Minecraft)`);
+    errors.push(`MC_API_TOKEN belum diisi di ${source} (harus sama dengan MC_API_TOKEN di service bot Minecraft)`);
   }
   return errors;
 }
@@ -93,7 +124,8 @@ function configErrors(config) {
 function configHints() {
   return [
     '',
-    'di Railway/heroku, isi semua ini sebagai environment variable di dashboard:',
+    'di Railway/heroku, isi semua ini sebagai environment variable di dashboard',
+    '(file .env tidak perlu ada di sana):',
     '  DISCORD_TOKEN, MC_API_TOKEN, MC_API_URL',
     '',
     'secara lokal, cara paling cepat tanpa edit file:',

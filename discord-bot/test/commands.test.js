@@ -156,6 +156,23 @@ check('requireConfirm default false', loadConfig({}, path.join(__dirname, 'tidak
 const missingFile = path.join(__dirname, 'tidak-ada.env');
 check('configErrors sebut path file', configErrors(loadConfig({}, missingFile)).some((line) => line.includes(missingFile)));
 check('configErrors ada petunjuk perbaikan', configHints().some((line) => line.includes('DISCORD_TOKEN')));
+
+// Railway/heroku: tidak ada file .env sama sekali, semua config dari env var.
+const railwayEnv = {
+  DISCORD_TOKEN: 'tok',
+  MC_API_TOKEN: 'tok',
+  MC_API_URL: 'https://contoh.up.railway.app',
+  DISCORD_ALLOWED_CHANNELS: '1556713848944201828'
+};
+const railwayConfig = loadConfig(railwayEnv, missingFile);
+check('railway: .env tidak ada tapi env var cukup', configErrors(railwayConfig).length === 0, configErrors(railwayConfig).join(' | '));
+check('railway: envFileExists false', railwayConfig.envFileExists === false);
+check('railway: fromEnvironment terdeteksi', railwayConfig.fromEnvironment.includes('DISCORD_TOKEN'));
+check('railway: token terbaca dari env', railwayConfig.discordToken === 'tok' && railwayConfig.apiToken === 'tok');
+check('railway: channel terbaca dari env', railwayConfig.allowedChannels.join(',') === '1556713848944201828');
+const railwayTanpaApi = loadConfig({ DISCORD_TOKEN: 'tok', MC_API_URL: 'https://x' }, missingFile);
+check('railway: tetap error kalau MC_API_TOKEN hilang', configErrors(railwayTanpaApi).some((line) => line.includes('MC_API_TOKEN')));
+check('railway: pesan error sebut environment variable', configErrors(railwayTanpaApi).every((line) => !line.includes(missingFile) || line.includes('environment')));
 require('fs').unlinkSync(envFile);
 
 process.stdout.write(`discord-bot: ${checks} test lolos\n`);
