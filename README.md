@@ -303,9 +303,11 @@ kepala. Bot hanya melangkah ke blok yang di atasnya ada block solid, jadi tidak 
 | `range` | `12` | jangkauan cari target (blok) |
 | `attackRange` | `3` | jarak mulai mengayun pedang |
 | `approach` | `true` | `false` = bot tidak pernah bergerak: mob yang terlihat langsung dipukul dari posisi bot sekarang, bahkan kalau belum masuk jangkauan, dan tidak pernah masuk daftar target yang dicoret karena "tidak bisa didekati" |
+| `holdStill` | `["warden"]` | mob yang **tidak boleh didekati**: bot diam di posisinya (mis. di atas spawner) dan hanya memukul saat mob masuk jangkauan. Berlaku per jenis mob, jadi mob lain tetap didekati. `[]` = semua mob didekati. Kalau bot berdiri di atas blok spawner, lihat catatan di bawah |
 | `intervalMs` | `500` | jeda scan keputusan (cari target / mendekat). Ini tetap periode loop, bukan jeda ayunan |
 | `attackCooldownMs` | `100` | jeda antarayunan (`100` = 10 CPS, `0` = spam tanpa jeda, dibatasi 40 CPS) |
 | `cpsMin` / `cpsMax` | `null` | `null` = click rate tetap dari `attackCooldownMs`. Kalau diisi, jeda tiap klik **diacak** di antara `cpsMin` dan `cpsMax` (persis seperti mod auto clicker), jadi pola ayunan tidak terlihat tetap: `{ "cpsMin": 8, "cpsMax": 14 }` = acak 8-14 klik/detik. Batas tersirat 0,5-40 CPS |
+| `attackDelayMs` | `2000` | jeda **minimum** antar serangan (ms): pukulan berikutnya ditahan sampai nilai ini lewat supaya damage penuh sempat masuk ke server (tidak ada spam yang damage-nya terbuang). Menang atas `attackCooldownMs`/`cpsMin`-`cpsMax`; `0` = tanpa patokan |
 | `aimHeight` | `0.8` | tinggi bidikan di atas kaki mob (blok): `0` = kaki, `0.8` = bagian bawah badan. Nilai ini selalu dijepit supaya tidak keluar dari hitbox mob |
 | `equipRetryMs` | `1000` | jeda sebelum equip diulang kalau server tidak menaruh senjata di tangan |
 | `retreatBelowHealth` | `6` | HP <= nilai ini → berhenti menyerang untuk regen; `0` = nonaktif |
@@ -316,8 +318,18 @@ kepala. Bot hanya melangkah ke blok yang di atasnya ada block solid, jadi tidak 
 | `whitelist` | `[]` | kalau diisi, **hanya** mob dalam daftar ini yang diserang |
 | `ignore` | `[]` | mob yang tidak boleh diserang (mis. `["creeper"]`) |
 
+**Diam di atas spawner (anchor warden):** setiap kali target yang dilawan ada di
+`holdStill` (default `warden`) **dan** bot sedang berdiri di atas blok spawner
+(nama block memuat kata `spawner`, termasuk spawner kustom server), bot dibekukan
+total di titik itu: tidak maju, tidak mundur — termasuk saat `retreatBelowHealth`
+terpicu. Jadi posisi bot di atas spawner tidak pernah bergeser selama fight warden.
+Begitu targetnya bukan warden lagi, atau bot sudah tidak di atas spawner, aturan
+normal (termasuk mundur saat HP rendah) berlaku kembali. Kalau chunk belum dimuat
+atai `blockAt` tidak tersedia, bot dianggap tidak di atas spawner dan perilaku
+lama dipakai.
+
 Bot hanya menyerang mob hostil (zombie, skeleton, spider, creeper, slime, dll). Player,
-villager, hewan, item, `armor_stand`, `warden`, dan naga tidak pernah jadi target kecuali
+villager, hewan, item, `armor_stand`, dan naga tidak pernah jadi target kecuali
 `whitelist` diisi eksplisit. `ignore` menang atas `whitelist`. Deteksi hostile memakai nama
 mob, `entity.type/kind/category`, dan registry vanilla (jadi mob dari mod yang dikenal
 ikut dipukul).
@@ -354,6 +366,12 @@ diperiksa saat ayunan berikutnya mau dikirim, bukan diundi ulang, supaya CPS yan
 memang yang terjadi — kalau dihitung dua kali, jeda efektifnya jadi penjumlahan dua
 undian dan click rate asli selalu lebih rendah dari yang diminta. Yang diacak hanya jeda
 antarayunan; bergerak, lari, dan lompat tidak ikut berubah.
+
+`attackDelayMs` (default `2000`) adalah patokan keras di atas semua itu: pukulan berikutnya
+tidak pernah dikirim sebelum jeda ini lewat, jadi damage penuh dari serangan sebelumnya
+sempat masuk ke server dan tidak ada spam yang damage-nya terbuang. Kalau `attackCooldownMs`
+atau `cpsMin`/`cpsMax` meminta jeda lebih pendek, yang dipakai tetap `attackDelayMs`;
+set `0` untuk melepas patokan ini.
 
 Auto-panen dan pukul mob sama-sama menggerakkan bot, jadi hanya boleh satu yang memegang
 kontrol gerak. Begitu ada target, auto-panen berhenti jalan dan siklus panennya ditunda sampai
@@ -765,7 +783,9 @@ hitbox) — bidikan terlalu tinggi membuat crosshair keluar dari mob kecil seper
 atau tupai.
 
 **Lama banget kill mob**
-Turunkan `combat.attackCooldownMs` (default `100` = 10 CPS, `0` = spam tanpa jeda). Nilai ini
+Jeda antar serangan dikunci `combat.attackDelayMs` (default `2000` ms) supaya damage penuh
+masuk sebelum pukulan berikutnya; turunkan atau set `0` kalau mau lebih agresif. Setelah itu,
+turunkan `combat.attackCooldownMs` (default `100` = 10 CPS, `0` = spam tanpa jeda). Nilai ini
 hanya mengatur selisih antarayunan, jadi `intervalMs` (jeda scan) tidak perlu disentuh.
 Kalau mau click rate-nya diacak seperti mod auto clicker, isi `combat.cpsMin`/`combat.cpsMax`
 (misal `8`/`14`) — satu menimpa jeda tetap, jadi `attackCooldownMs` boleh dipakai lagi

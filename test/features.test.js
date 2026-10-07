@@ -5,7 +5,8 @@ const { Vec3 } = require('vec3');
 
 const {
   attachCombat, findNearestTarget, isHostile, pickWeapon, weaponScore, planCombat, shouldRetreat, entityKind,
-  normalizeName, withinReach, attackInterval, clickInterval, cpsRange, cpsLabel, scanInterval, feetAimPoint
+  normalizeName, withinReach, attackInterval, clickInterval, cpsRange, cpsLabel, scanInterval, feetAimPoint,
+  standingOnSpawner
 } = require('../lib/combat');
 const {
   attachShop, parsePrice, freeSlots, isInventoryFull, planDump, dumpInventory, findBuyableSlots, planBuy,
@@ -76,7 +77,7 @@ process.stdout.write('[features] pukul mob: filter target\n');
   check('player boleh ditargetkan kalau diizinkan', isHostile(player, { attackPlayers: true }) === true);
   check('villager tidak ditargetkan', isHostile({ name: 'villager' }) === false);
   check('armor_stand tidak ditargetkan', isHostile({ name: 'armor_stand' }) === false);
-  check('warden tidak ditargetkan', isHostile({ name: 'warden' }) === false);
+  check('warden ditargetkan', isHostile({ name: 'warden' }) === true);
   check('mob mati tidak ditargetkan', isHostile({ name: 'zombie', health: 0 }) === false);
   check('ignore list dipakai', isHostile({ name: 'zombie' }, { ignore: ['zombie'] }) === false);
   check('whitelist membatasi jenis', isHostile({ name: 'cow' }, { whitelist: ['zombie'] }) === false);
@@ -137,6 +138,86 @@ process.stdout.write('[features] pukul mob: keputusan plan\n');
   check('HP kritis -> retreat', planCombat(bot, { range: 12, retreatBelowHealth: 6 }).action === 'retreat');
   check('tanpa batas HP -> tidak retreat', shouldRetreat(bot, { retreatBelowHealth: 0 }) === false);
   check('tanpa entity -> wait', planCombat({ entities: {} }, {}).action === 'wait');
+
+  const wardenBot = makeBot();
+  wardenBot.entities = { 2: { id: 2, name: 'warden', position: new Vec3(0.5, 64, 10), health: 500, height: 2.9 } };
+  const holdPlan = planCombat(wardenBot, { range: 12, holdStill: ['warden'] });
+  check('warden tidak didekati, dipukul dari tempat', holdPlan.action === 'attack' && holdPlan.stand === true, holdPlan.action);
+  check('warden di luar jangkauan ditandai', holdPlan.inReach === false, String(holdPlan.inReach));
+  check('holdStill case-insensitive', planCombat(wardenBot, { range: 12, holdStill: ['Warden'] }).stand === true);
+  check('holdStill kosong, warden didekati', planCombat(wardenBot, { range: 12, holdStill: [] }).action === 'approach');
+  const otherBot = makeBot();
+  otherBot.entities = { 3: { id: 3, name: 'zombie', position: new Vec3(0.5, 64, 10), health: 20 } };
+  check('zombie tetap didekati saat holdStill warden', planCombat(otherBot, { range: 12, holdStill: ['warden'] }).action === 'approach');
+}
+
+process.stdout.write('\n');
+process.stdout.write('[features] pukul mob: deteksi bot di atas spawner\n');
+{
+  const onSpawner = makeBot({ blockAt: (p) => ({ name: Math.floor(p.y) === 63 ? 'spawner' : 'air' }) });
+  check('blok di bawah kaki = spawner', standingOnSpawner(onSpawner) === true);
+  const insideSpawner = makeBot({ blockAt: (p) => ({ name: Math.floor(p.y) === 64 ? 'warden_spawner' : 'air' }) });
+  check('blok di kaki (spawner kustom) terbaca', standingOnSpawner(insideSpawner) === true);
+  check('blok biasa bukan spawner', standingOnSpawner(makeBot({ blockAt: () => ({ name: 'stone' }) })) === false);
+  check('blockAt null -> bukan spawner', standingOnSpawner(makeBot({ blockAt: () => null })) === false);
+  check('blockAt tidak ada -> bukan spawner', standingOnSpawner(makeBot({ blockAt: undefined })) === false);
+}
+
+process.stdout.write('\n');
+process.stdout.write('[features] pukul mob: warden di atas spawner dibekukan\n');
+{
+  const warden = { id: 2, name: 'warden', position: new Vec3(0.5, 64, 10), health: 500, height: 2.9 };
+  const settings = { range: 12, holdStill: ['warden'], retreatBelowHealth: 6 };
+
+  const spawnerBot = makeBot({ blockAt: (p) => ({ name: Math.floor(p.y) === 63 ? 'spawner' : 'air' }) });
+  spawnerBot.entities = { 2: warden };
+  spawnerBot.health = 4;
+  const anchorPlan = planCombat(spawnerBot, settings);
+  check('HP rendah di atas spawner warden: bukan retreat', anchorPlan.action === 'attack', anchorPlan.action);
+  check('HP rendah di atas spawner warden: diam total', anchorPlan.stand === true && anchorPlan.anchored === true);
+  spawnerBot.health = 20;
+  check('HP penuh tetap diam di atas spawner', planCombat(spawnerBot, settings).anchored === true);
+
+  const groundBot = makeBot({ blockAt: () => ({ name: 'stone' }) });
+  groundBot.entities = { 2: warden };
+  groundBot.health = 4;
+  check('warden tapi tidak di spawner: HP rendah tetap mundur', planCombat(groundBot, settings).action === 'retreat');
+
+  const zombieBot = makeBot({ blockAt: (p) => ({ name: Math.floor(p.y) === 63 ? 'spawner' : 'air' }) });
+  zombieBot.entities = { 3: { id: 3, name: 'zombie', position: new Vec3(0.5, 64, 8), health: 20 } };
+  zombieBot.health = 4;
+  check('mob lain di spawner: HP rendah tetap mundur', planCombat(zombieBot, settings).action === 'retreat');
+  zombieBot.health = 20;
+  const zombiePlan = planCombat(zombieBot, settings);
+  check('mob lain di spawner: tetap didekati, tidak dibekukan', zombiePlan.action === 'approach' && !zombiePlan.anchored, zombiePlan.action);
+}
+
+process.stdout.write('\n');
+process.stdout.write('[features] pukul mob: tidak maju/mundur selama fight warden di spawner\n');
+{
+  const messages = [];
+  const bot = makeBot({ blockAt: (p) => ({ name: Math.floor(p.y) === 63 ? 'spawner' : 'air' }) });
+  bot.health = 4;
+  bot.entities = { 9: { id: 9, name: 'warden', height: 2.9, position: new Vec3(0.5, 64, 3) } };
+  bot.inventory = { items: () => [{ name: 'netherite_sword', count: 1 }] };
+  const combat = attachCombat(bot, {
+    combat: {
+      enabled: true, range: 12, attackRange: 3, intervalMs: 100000, attackCooldownMs: 0,
+      retreatBelowHealth: 6, holdStill: ['warden']
+    }
+  }, captureLogger(messages));
+  combat.start();
+  bot.moves.length = 0;
+  bot.hits.length = 0;
+  combat.tick();
+  check('tidak mundur walau HP kritis', !bot.moves.includes('back'), JSON.stringify(bot.moves));
+  check('tidak maju ke warden', !bot.moves.includes('forward'), JSON.stringify(bot.moves));
+  check('tetap memukul warden dari tempat', bot.hits.length >= 1, JSON.stringify(bot.hits));
+  const warns = () => messages.filter(([, text]) => /tapi bot di atas spawner/.test(text));
+  check('peringatan freeze ditulis', warns().length === 1, String(warns().length));
+  combat.tick();
+  check('peringatan freeze tidak spam', warns().length === 1, String(warns().length));
+  combat.stop();
 }
 
 process.stdout.write('\n');
@@ -1767,6 +1848,36 @@ process.stdout.write('[features] pukul mob: CPS acak ala mod auto clicker (cpsMi
     Date.now = realNow;
     fixedCombat.stop();
   }
+
+  const delayed = makeBot();
+  delayed.entities = { 5: { id: 5, name: 'zombie', height: 1.95, position: new Vec3(0.5, 64, 2) } };
+  const delayedCombat = attachCombat(delayed, {
+    combat: { enabled: true, range: 12, approach: false, attackRange: 2, intervalMs: 100000, attackCooldownMs: 0, cpsMin: 8, cpsMax: 14, attackDelayMs: 2000 }
+  }, quietLogger());
+  const delayedNow = realNow();
+  let clock = delayedNow;
+  Date.now = () => clock;
+  try {
+    delayedCombat.start();
+    clock += 10;
+    delayedCombat.tick(100);
+    check('serangan pertama tetap jalan', delayed.hits.length === 1, String(delayed.hits.length));
+    clock += 1000;
+    delayedCombat.tick(100);
+    check('serangan ditahan sampai jeda 2 detik lewat', delayed.hits.length === 1, String(delayed.hits.length));
+    clock += 999;
+    delayedCombat.tick(100);
+    check('serangan masih ditahan sebelum 2000 ms', delayed.hits.length === 1, String(delayed.hits.length));
+    clock += 1;
+    delayedCombat.tick(100);
+    check('serangan berikutnya masuk tepat di 2000 ms', delayed.hits.length === 2, String(delayed.hits.length));
+    clock += 50;
+    delayedCombat.tick(100);
+    check('jeda minimum menang atas cooldown klik', delayed.hits.length === 2, String(delayed.hits.length));
+  } finally {
+    Date.now = realNow;
+    delayedCombat.stop();
+  }
 }
 
 process.stdout.write('\n');
@@ -2145,6 +2256,9 @@ process.stdout.write('[features] config combat/shop/farm\n');
   check('shop default mati tanpa config file', pure.shop.enabled === false);
   check('farm default mati tanpa config file', pure.farm.enabled === false);
   check('combat default range 12', pure.combat.range === 12, String(pure.combat.range));
+  check('holdStill default warden', Array.isArray(pure.combat.holdStill) && pure.combat.holdStill.includes('warden'), JSON.stringify(pure.combat.holdStill));
+  const holdBad = loadConfig([], { MC_CONFIG_JSON: JSON.stringify({ combat: { holdStill: 'warden' } }) });
+  check('holdStill non-array -> []', Array.isArray(holdBad.combat.holdStill) && holdBad.combat.holdStill.length === 0, JSON.stringify(holdBad.combat.holdStill));
 
   const cli = loadConfig(['--combat', '--shop', '/shopmenu', '--farm'], {});
   check('CLI --combat menyalakan', cli.combat.enabled === true);
@@ -2166,6 +2280,11 @@ process.stdout.write('[features] config combat/shop/farm\n');
   check('maxPerCycle negatif -> 0', clamp.farm.maxPerCycle === 0, String(clamp.farm.maxPerCycle));
 
   check('default combat tanpa CPS acak', pure.combat.cpsMin === null && pure.combat.cpsMax === null, `${pure.combat.cpsMin}/${pure.combat.cpsMax}`);
+  check('jeda minimum serangan default 2 detik', pure.combat.attackDelayMs === 2000, String(pure.combat.attackDelayMs));
+  const delayOff = loadConfig([], { MC_CONFIG_JSON: JSON.stringify({ combat: { attackDelayMs: 0 } }) });
+  check('attackDelayMs 0 = tanpa patokan', delayOff.combat.attackDelayMs === 0, String(delayOff.combat.attackDelayMs));
+  const delayBad = loadConfig([], { MC_CONFIG_JSON: JSON.stringify({ combat: { attackDelayMs: 'ngawur' } }) });
+  check('attackDelayMs rusak -> default 2000', delayBad.combat.attackDelayMs === 2000, String(delayBad.combat.attackDelayMs));
   const cps = loadConfig([], { MC_CONFIG_JSON: JSON.stringify({ combat: { cpsMin: 8, cpsMax: 14 } }) });
   check('cpsMin/cpsMax diteruskan', cps.combat.cpsMin === 8 && cps.combat.cpsMax === 14, `${cps.combat.cpsMin}/${cps.combat.cpsMax}`);
   const cpsClamp = loadConfig([], { MC_CONFIG_JSON: JSON.stringify({ combat: { cpsMin: 0.01, cpsMax: 500 } }) });
@@ -2202,6 +2321,8 @@ process.stdout.write('[features] validasi profil combat/shop/farm\n');
   check('combat.cpsMin negatif ditolak', validateProfile({ name: 'Azka01', combat: { cpsMin: -5 } }, 0).some((e) => e.includes('combat.cpsMin')));
   check('combat.cpsMax string ditolak', validateProfile({ name: 'Azka01', combat: { cpsMax: 'cepat' } }, 0).some((e) => e.includes('combat.cpsMax')));
   check('combat.cps null diterima', validateProfile({ name: 'Azka01', combat: { cpsMin: 8, cpsMax: 14 } }, 0).length === 0);
+  check('combat.holdStill non-array ditolak', validateProfile({ name: 'Azka01', combat: { holdStill: 'warden' } }, 0).some((e) => e.includes('combat.holdStill')));
+  check('combat.holdStill array diterima', validateProfile({ name: 'Azka01', combat: { holdStill: ['warden'] } }, 0).length === 0);
 }
 
 process.stdout.write('\n');

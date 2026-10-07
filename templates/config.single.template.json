@@ -27,6 +27,7 @@
     "enabled": true,
     "range": 12,
     "approach": true,
+    "holdStill": ["warden"],
     "attackRange": 3,
     "intervalMs": 500,
     "attackCooldownMs": 100,

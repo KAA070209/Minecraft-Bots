@@ -4,7 +4,9 @@
   "description": "Mineflayer AFK bot + multi-account orchestrator for cracked (offline-mode) Minecraft servers",
   "main": "start.js",
   "type": "commonjs",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node start.js",
     "single": "node index.js",
@@ -24,7 +26,9 @@
     "test:regression": "node test/chatgame-regression.js",
     "test:stress": "node test/chatgame-stress.js",
     "test:ai": "node test/chatgame-ai.test.js",
-    "test:live": "node test/chatgame-live-regression.js"
+    "test:live": "node test/chatgame-live-regression.js",
+    "build": "node tools/build-template.js",
+    "build:template": "node tools/build-template.js"
   },
   "dependencies": {
     "mineflayer": "^4.23.0"
