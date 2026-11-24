@@ -26,6 +26,7 @@ const API_COMMAND_NAMES = [
   'inv',
   'harvest',
   'farm',
+  'fish',
   'stop',
   'say',
   'solve',

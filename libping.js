@@ -1,6 +1,6 @@
 const mc = require('minecraft-protocol');
 
-const host = process.argv[2] || 'minesive.com';
+const host = process.argv[2] || 'valoriasmp.id';
 const port = parseInt(process.argv[3] || '25565', 10);
 
 const timer = setTimeout(() => {

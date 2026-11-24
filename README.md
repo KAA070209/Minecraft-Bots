@@ -18,6 +18,7 @@ Fitur utama:
 - **beli shop otomatis** — GUI atau perintah, dan **buang seluruh isi inventory saat penuh**
 - **lihat isi inventory** dari console (`inv`), lengkap dengan filter nama item
 - **panen lahan** (wortel/gandum/kentang) + ambil drop + tanam ulang
+- **auto-mancing** — cari pancingan di inventory, pegang otomatis, lempar/tarik saat ada gigitan
 - auto-reconnect dengan exponential backoff + jitter
 - deteksi kick AFK (jeda diperpanjang) vs kick auth (coba daftar ulang)
 - heartbeat status, log terpisah per bot, console interaktif
@@ -95,7 +96,8 @@ npm start
 ```
 
 `{name}` di `logging.file` diganti nama profil, jadi tiap bot punya log sendiri.
-Opsional per profil: `"password": "rahasia"` atau `"enabled": false` untuk melewati bot.
+Opsional per profil: `"password": "rahasia"`, `"enabled": false` untuk melewati bot, atau
+override `"combat"`, `"shop"`, `"farm"`, dan `"fishing"` (misal `"fishing": { "enabled": false }`).
 
 ```bash
 npm run multi
@@ -140,7 +142,7 @@ npm run multi -- --statusEvery 30000          # interval tabel status (ms)
 | `help` | daftar perintah |
 | `status` | status koneksi, versi, uptime, posisi |
 | `pos` | posisi, HP, food, block atas/bawah |
-| `stats` | jumlah aksi anti-AFK, lompat, makan, penyelamatan, pukul mob, beli, panen |
+| `stats` | jumlah aksi anti-AFK, lompat, makan, penyelamatan, pukul mob, beli, panen, mancing |
 | `look [yaw] [pitch]` | putar kepala (derajat) |
 | `idle` | faksa satu aksi anti-AFK sekarang |
 | `eat` | faksa makan sekarang |
@@ -152,7 +154,8 @@ npm run multi -- --statusEvery 30000          # interval tabel status (ms)
 | `harvest` | panen lahan di `farm.area` sekarang |
 | `harvest stop` | batalkan panen yang sedang jalan (auto-panen tetap menyala) |
 | `farm [on\|off]` | lihat/nyalakan/matikan auto-panen |
-| `stop` | berhenti total: batalkan panen, matikan auto-panen + pukul mob, hentikan gerakan |
+| `fish [on\|off]` | lihat/nyalakan/matikan auto-mancing (pancingan dicari di inventory) |
+| `stop` | berhenti total: panen, pukul mob, auto-mancing, dan gerakan |
 | `say <pesan>` | kirim chat |
 | `restart` | keluar lalu sambung ulang |
 | `quit` | matikan bot |
@@ -163,7 +166,7 @@ npm run multi -- --statusEvery 30000          # interval tabel status (ms)
 | --- | --- |
 | `status` | tabel status semua bot |
 | `status <nama>` | detail satu bot (posisi, HP, food, register) |
-| `stats <nama>` | statistik AFK + pukul mob + beli + panen satu bot |
+| `stats <nama>` | statistik AFK + pukul mob + beli + panen + mancing satu bot |
 | `attack [nama] [on\|off\|stop]` | pukul mob satu bot (`off`/`stop` = berhenti menyerang) |
 | `buy <nama>` | beli item shop di satu bot |
 | `dump <nama>` | buang isi inventory satu bot |
@@ -172,7 +175,8 @@ npm run multi -- --statusEvery 30000          # interval tabel status (ms)
 | `harvest <nama>` | panen lahan satu bot |
 | `harvest <nama> stop` | batalkan panen satu bot yang sedang jalan |
 | `farm <nama> [on\|off]` | lihat/nyalakan/matikan auto-panen satu bot |
-| `stopall` | hentikan panen + pukul mob semua bot |
+| `fish <nama> [on\|off]` | lihat/nyalakan/matikan auto-mancing satu bot |
+| `stopall` | hentikan panen + pukul mob + auto-mancing semua bot |
 | `restart <nama>` | paksa sambung ulang satu bot |
 | `stop <nama>` | hentikan satu bot |
 | `help` | daftar perintah |
@@ -223,6 +227,7 @@ Panduan lengkap (buat bot di Developer Portal, izin role, daftar perintahnya) ad
 | `!pos`, `!stats`, `!inv [nama] [filter]`, `!invall` | posisi, statistik, isi inventory |
 | `!attack [nama\|all] [on\|off]`, `!buy`, `!dump` | pukul mob, beli shop, buang tas |
 | `!harvest`, `!harveststop`, `!farm`, `!farmon`, `!farmoff` | panen lahan dan auto-panen |
+| `!fish`, `!fishon`, `!fishoff` | status/nyalakan/matikan auto-mancing |
 | `!say <nama> <pesan>`, `!sayall <pesan>` | chat dari bot |
 | `!walk`, `!look`, `!halts`, `!idle`, `!eat`, `!rescue` | kendali gerak dan survival |
 | `!stop`, `!restart`, `!shutdown <nama> confirm` | hentikan/sambung ulang/matikan |
@@ -383,6 +388,29 @@ mandar atau berputar di tempat tetap dihitung macet setelah `stuckTimeoutMs`, ja
 lagi dikejar tanpa henti. `!attack` menampilkan aksi terakhir (`dekati`/`serang`) dan jarak
 terakhir ke mob, jadi langsung kelihatan apakah bot "tidak sampai" atau "sudah sampai tapi
 tidak kena".
+
+### `fishing` (auto-mancing)
+
+| Opsi | Default | Keterangan |
+| --- | --- | --- |
+| `enabled` | `true` | `true` = otomatis aktif **kalau ada pancingan di inventory**; tidak ada pancingan = diam |
+| `rodNames` | `[]` | nama/item tambahan yang dianggap pancingan (berguna untuk pancingan custom) |
+| `loopMs` | `500` | jeda cek kondisi pancingan |
+| `castTimeoutMs` | `4000` | kalau bobber tidak muncul dalam waktu ini, pancingan ditarik dan dilempar lagi |
+| `biteTimeoutMs` | `25000` | lama menunggu gigitan sebelum lemparan diulang |
+| `reelDelayMs` | `800` | jeda setelah menarik pancingan sebelum lempar berikutnya |
+| `equipRetryMs` | `1500` | jeda minimum sebelum mencoba memegang pancingan lagi |
+
+Cara kerja: bot mencari item `fishing_rod` (atau nama di `rodNames`) di seluruh inventory,
+memegangnya, lalu melempar pancingan. Gigitan dikenali dari partikel `fishing`/`bubble` di
+sekitar bobber, lalu pancingan langsung ditarik dan dilempar lagi. Kalau tidak ada gigitan
+sampai `biteTimeoutMs`, bot menarik dan melempar ulang supaya tidak diam terlalu lama.
+
+Auto-mancing otomatis berhenti sementara saat combat sedang mengejar mob; siklus panen dan
+ayunan anti-AFK juga ditunda **selama pancingan benar-benar dipegang**, supaya tidak rebut
+item di tangan. Kalau tidak ada pancingan, fitur ini diam dan tidak mengganggu panen/gerak.
+Pancingan otomatis dimasukkan ke `shop.keep` supaya tidak ikut dibuang saat `dump`/inventory
+penuh. Perintah `fish on|off` bisa menyalakan/mematikan tanpa mengubah config.
 
 ### `shop` (beli otomatis + buang inventory)
 
@@ -556,9 +584,11 @@ perintah `farm` di console: area yang dipakai, jarak bot ke lahan, jumlah tanama
 | `jitter` | `0.3` | acak ±30% supaya tidak menumpuk |
 | `maxAttempts` | `0` | batas percobaan gagal; `0` = tak terbatas |
 | `afkKickExtraMs` | `90000` | jeda tambahan kalau dikick karena AFK |
+| `deniedKickExtraMs` | `180000` | jeda tambahan kalau ditolak anti-bot (Sonar/Valoria Protect) |
 
 Kick akibat AFK dikenali dari isi pesannya lalu jeda diperpanjang 90 detik. Kick akibat
-autentikasi/registrasi dicoba ulang sampai `maxAuthFailures`.
+autentikasi/registrasi dicoba ulang sampai `maxAuthFailures`. Kick "denied from entering /
+wait a few minutes" dari anti-bot diberi jeda 3 menit supaya masa blokir tidak diperpanjang.
 
 ### `join` dan `logging`
 
@@ -577,20 +607,22 @@ autentikasi/registrasi dicoba ulang sampai `maxAuthFailures`.
 node index.js --host server.com --port 25565 --username jack01 --afk wander
 node index.js --register register --registerPassword rahasia
 node index.js --noRegister --log debug --noFile
-node index.js --combat --shop /shop --farm
+node index.js --combat --shop /shop --farm --fishing
+node index.js --noFishing
 node index.js --api --apiPort 8787 --apiToken token-acak-panjang
 ```
 
 ```
 MC_HOST, MC_PORT, MC_USERNAME, MC_VERSION, MC_REGISTER_MODE, MC_REGISTER_PASSWORD,
-MC_NO_REGISTER, MC_LOG_LEVEL, MC_AFK_MODE, MC_AFK_INTERVAL, MC_COMBAT, MC_SHOP,
+MC_NO_REGISTER, MC_LOG_LEVEL, MC_AFK_MODE, MC_AFK_INTERVAL, MC_COMBAT, MC_FISHING, MC_SHOP,
 MC_SHOP_COMMAND, MC_FARM, MC_CONFIG, MC_CONFIG_JSON, MC_API, MC_API_HOST, MC_API_PORT,
 MC_API_TOKEN
 ```
 
 `MC_CONFIG` menunjuk file JSON lain; `MC_CONFIG_JSON` menerima objek JSON langsung (dipakai
-orkestrator untuk menimpa config per profil). `--combat`, `--shop <perintah>`, dan `--farm`
-menyalakan fitur tanpa mengubah file config. `MC_API*`/`--api*` menyalakan HTTP control
+orkestrator untuk menimpa config per profil). `--combat`, `--shop <perintah>`, `--farm`, dan
+`--fishing` menyalakan fitur tanpa mengubah file config; `--noFishing` mematikannya.
+`MC_FISHING=0` juga mematikan auto-mancing. `MC_API*`/`--api*` menyalakan HTTP control
 API tanpa mengubah file config juga.
 
 `MC_PROFILES_JSON` menerima isi `profiles.json` langsung sebagai JSON, jadi di hosting
@@ -613,7 +645,7 @@ Environment variables untuk service bot Minecraft:
 MC_PROFILES_JSON={"profiles":[{"name":"AzkaSaadi","password":"..."},{"name":"TharXz","password":"..."},{"name":"VBIFERSS","password":"..."}]}
 MC_API=1
 MC_API_TOKEN=token-acak-panjang-kau-pilih
-MC_HOST=minesive.com
+MC_HOST=valoriasmp.id
 MC_PORT=25565
 ```
 
@@ -684,6 +716,7 @@ lib/combat.js       pukul mob otomatis + pilih senjata
 lib/shop.js         beli shop otomatis + buang inventory saat penuh
 lib/inventory.js    baca + format isi inventory (filter, ringkasan slot, item tangan)
 lib/farm.js         panen lahan + ambil drop + tanam ulang
+lib/fishing.js      auto-mancing: cari pancingan, lempar, deteksi gigitan, tarik
 lib/backoff.js      exponential backoff + jitter
 lib/console.js      perintah console interaktif
 lib/logger.js       log bertimestamp ke terminal + file
@@ -693,11 +726,12 @@ discord-bot/        service Discord.js terpisah (prefix commands -> HTTP API)
 ## Test
 
 ```bash
-npm test                 # unit + features + control/API + integration
+npm test                 # unit + features + fishing + control/API + integration
 npm run test:units       # fungsi murni
-npm run test:features    # pukul mob, shop, inventory, panen, config (425 test)
-npm run test:control     # lib/control.js + lib/api.js (54 test, HTTP lokal)
-npm run test:discord     # parsing perintah + embed discord-bot (89 test)
+npm run test:features    # pukul mob, shop, inventory, panen, config (514 test)
+npm run test:fishing     # auto-mancing: cari pancingan, gigitan, timeout, hook (89 test)
+npm run test:control     # lib/control.js + lib/api.js (71 test, HTTP lokal)
+npm run test:discord     # parsing perintah + embed discord-bot (129 test)
 npm run test:register    # logika auto-register (53 test)
 npm run test:integration # reconnect + mode AFK
 npm run test:register-live # register sungguhan lewat server lokal (17 test)

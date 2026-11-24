@@ -1,5 +1,5 @@
 {
-  "server": { "host": "minesive.com", "port": 25565 },
+  "server": { "host": "valoriasmp.id", "port": 25565 },
   "account": { "username": "AzkaSaadi" },
   "version": null,
   "join": { "spawnTimeoutMs": 90000, "autoJoin": true, "autoReconnect": true },
@@ -43,6 +43,15 @@
     "attackPlayers": false,
     "whitelist": [],
     "ignore": []
+  },
+  "fishing": {
+    "enabled": true,
+    "rodNames": [],
+    "loopMs": 500,
+    "castTimeoutMs": 4000,
+    "biteTimeoutMs": 25000,
+    "reelDelayMs": 800,
+    "equipRetryMs": 1500
   },
   "shop": {
     "enabled": false,

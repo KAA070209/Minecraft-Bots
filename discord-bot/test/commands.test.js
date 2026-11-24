@@ -35,6 +35,9 @@ const cases = [
   ['!harveststop jack01', 'harveststop', 'jack01', 'harvest jack01 stop'],
   ['!farmon', 'farmon', '', 'farm all on'],
   ['!farmoff jack01', 'farmoff', 'jack01', 'farm jack01 off'],
+  ['!fish jack01 on', 'fish', 'jack01 on', 'fish jack01 on'],
+  ['!fishon AzkaSaadi', 'fishon', 'AzkaSaadi', 'fish AzkaSaadi on'],
+  ['!fishoff', 'fishoff', '', 'fish all off'],
   ['!walk jack01 forward 1500', 'walk', 'jack01 forward 1500', 'walk jack01 forward 1500'],
   ['!stop all', 'stop', 'all', 'stop all'],
   ['!shutdown jack01 confirm', 'shutdown', 'jack01 confirm', 'shutdown jack01 confirm']
@@ -55,6 +58,8 @@ check('prefix lain tidak diparse', parseMessage('attack jack01 on', '!') === nul
 check('prefix kosong tidak diparse', parseMessage('   ', '!') === null);
 check('perintah asing menghasilkan null command', parseMessage('!giphy bar', '!').command === null);
 check('alias pukul = attack', findCommand('pukul').name === 'attack');
+check('alias pancing = fish', findCommand('pancing').name === 'fish');
+check('alias mancing = fish', findCommand('mancing').name === 'fish');
 check('setiap perintah punya usage', DISCORD_COMMANDS.every((command) => command.usage.startsWith('!')));
 check('setiap perintah punya build', DISCORD_COMMANDS.every((command) => typeof command.build === 'function'));
 check('shutdown ditandai berbahaya', findCommand('shutdown').danger === true);

@@ -129,7 +129,7 @@ setting untuk repo monorepo dan deploy akan gagal dengan `Cannot find module`.
 | `!status` | tabel status semua bot |
 | `!status <nama>` | detail satu bot |
 | `!pos [nama]` | posisi, health, food |
-| `!stats [nama]` | statistik AFK, pukul mob, beli, panen |
+| `!stats [nama]` | statistik AFK, pukul mob, beli, panen, mancing |
 | `!inv [nama] [filter] [max]` | isi inventory (nama bot boleh dihilangkan, jadi semua bot) |
 | `!invall [filter] [max]` | isi inventory semua bot |
 | `!attack [nama\|all] [on\|off]` | pukul mob otomatis |
@@ -140,7 +140,10 @@ setting untuk repo monorepo dan deploy akan gagal dengan `Cannot find module`.
 | `!farm [nama\|all] [on\|off]` | status/nyalakan auto-panen |
 | `!farmon [nama\|all]` | nyalakan auto-panen |
 | `!farmoff [nama\|all]` | matikan auto-panen |
-| `!stop [nama\|all]` | berhenti total (panen, pukul mob, gerak) |
+| `!fish [nama\|all] [on\|off]` | status/nyalakan/matikan auto-mancing |
+| `!fishon [nama\|all]` | nyalakan auto-mancing (cari pancingan di inventory) |
+| `!fishoff [nama\|all]` | matikan auto-mancing |
+| `!stop [nama\|all]` | berhenti total (panen, pukul mob, auto-mancing, gerak) |
 | `!say <nama> <pesan>` | chat dari satu bot |
 | `!sayall <pesan>` | chat dari semua bot |
 | `!solve [nama] <soal>` | jawab soal lewat solver/AI (tidak dikirim ke server) |

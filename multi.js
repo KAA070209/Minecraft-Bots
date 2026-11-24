@@ -242,7 +242,8 @@ function main() {
     'harvest <nama>    panen lahan di satu bot',
     'harvest <nama> stop   batalkan panen yang sedang jalan',
     'farm <nama> [on|off]  status/nyalakan auto-panen satu bot',
-    'stopall           hentikan panen + pukul mob semua bot',
+    'fish <nama> [on|off]  status/nyalakan auto-mancing satu bot',
+    'stopall           hentikan panen + pukul mob + mancing semua bot',
     'restart <nama>    paksa sambung ulang satu bot',
     'stop <nama>       hentikan satu bot',
     'start <nama>      jalankan satu bot lagi',
@@ -392,6 +393,23 @@ function main() {
             );
             break;
           }
+          case 'fish':
+          case 'mancing': {
+            if (!record) { process.stdout.write('\nprofil tidak ditemukan\n\n'); break; }
+            const fishing = record.runner && record.runner.state.fishing;
+            if (!fishing) { process.stdout.write(`\n${record.name}: fitur belum siap\n\n`); break; }
+            const mode = String(rest[1] || '').toLowerCase();
+            if (['on', 'start', 'nyalakan'].includes(mode)) fishing.setEnabled(true);
+            else if (['off', 'stop', 'mati'].includes(mode)) fishing.stop();
+            const info = fishing.status();
+            process.stdout.write(
+              `\n${record.name}: auto-mancing ${info.enabled ? 'ON' : 'OFF'}${info.casting ? ' (bobber di air)' : ''} | ` +
+              `pancingan=${info.rod || 'tidak ada'}${info.held ? ' (di tangan)' : ''} | ` +
+              `lempar=${info.stats.casts} gigitan=${info.stats.bites} ikan=${info.stats.catches} timeout=${info.stats.timeouts}\n` +
+              `${info.stats.lastError ? `error: ${info.stats.lastError}\n` : ''}\n`
+            );
+            break;
+          }
           case 'stopall': {
             for (const target of profiles) {
               if (!target.runner) continue;
@@ -399,9 +417,10 @@ function main() {
               const aborted = st.farm ? st.farm.abortHarvest() : false;
               if (st.farm) st.farm.stop();
               if (st.combat) st.combat.stop();
+              if (st.fishing) st.fishing.stop();
               manualStop(st.bot);
               process.stdout.write(
-                `\n${target.name}: berhenti total (panen ${aborted ? 'dibatalkan' : 'mati'}, pukul mob OFF, gerak berhenti)\n`
+                `\n${target.name}: berhenti total (panen ${aborted ? 'dibatalkan' : 'mati'}, pukul mob OFF, mancing OFF, gerak berhenti)\n`
               );
             }
             process.stdout.write('\n');

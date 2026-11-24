@@ -43,6 +43,15 @@
     "whitelist": [],
     "ignore": []
   },
+  "fishing": {
+    "enabled": true,
+    "rodNames": [],
+    "loopMs": 500,
+    "castTimeoutMs": 4000,
+    "biteTimeoutMs": 25000,
+    "reelDelayMs": 800,
+    "equipRetryMs": 1500
+  },
   "shop": {
     "enabled": false,
     "mode": "gui",

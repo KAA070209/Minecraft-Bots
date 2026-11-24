@@ -47,7 +47,7 @@ function fakeTarget(name, extra = {}) {
     register: 'authenticated',
     joins: 1,
     error: null,
-    config: { server: { host: 'minesive.com', port: 25565 } },
+    config: { server: { host: 'valoriasmp.id', port: 25565 } },
     ...extra.target,
     runner: {
       state,
@@ -83,6 +83,34 @@ async function controllerTests() {
 
   const soloAttack = await solo.execute('attack on');
   check('satu target: argumen jadi argumen perintah', soloAttack.results[0].lines[0] === 'fitur pukul mob belum siap', soloAttack.results[0].lines[0]);
+
+  const soloFish = await solo.execute('fish on');
+  check('satu target: fish tanpa fitur ditolak', soloFish.results[0].lines[0] === 'fitur auto-mancing belum siap', soloFish.results[0].lines[0]);
+
+  const fishingState = {
+    enabled: false,
+    casting: false,
+    stats: { casts: 2, bites: 1, catches: 1, timeouts: 0, lastCatchAt: 0, lastError: null },
+    setEnabled(value) { this.enabled = Boolean(value); },
+    stop() { this.enabled = false; },
+    status() {
+      return { enabled: this.enabled, casting: this.casting, rod: 'fishing_rod', held: true, stats: this.stats };
+    }
+  };
+  const fishController = createController({
+    getTargets: () => [fakeTarget('AzkaSaadi', { state: { fishing: fishingState } })]
+  });
+  const fishOn = await fishController.execute('fish on');
+  check('fish on menyalakan auto-mancing', fishOn.ok === true && fishingState.enabled === true);
+  check('fish on menampilkan status', fishOn.results[0].lines[0].includes('ON') && fishOn.results[0].lines[1].includes('fishing_rod'), fishOn.results[0].lines.join(' | '));
+  const fishAlias = await fishController.execute('mancing off');
+  check('alias mancing off mematikan', fishAlias.ok === true && fishingState.enabled === false);
+  check('fish off menampilkan OFF', fishAlias.results[0].lines[0].includes('OFF'));
+  const fishStats = await fishController.execute('stats');
+  check('stats memuat statistik mancing', fishStats.results[0].lines.some((line) => line.startsWith('mancing')), fishStats.results[0].lines.join(' | '));
+  fishingState.enabled = true;
+  const fishStopAll = await fishController.execute('stop all');
+  check('stop all mematikan auto-mancing', fishStopAll.ok === true && fishingState.enabled === false);
 
   const table = await multi.execute('status');
   check('multi target: status jadi tabel', table.results[0].lines[0].startsWith('BOT'), table.results[0].lines[0]);

@@ -44,7 +44,7 @@ function runBot(timeoutMs, extraArgs = [], readyPattern = /spawn di/) {
       '--noFile',
       '--noRegister',
       ...extraArgs
-    ], { cwd: ROOT, env: { ...process.env, MC_CONFIG: path.join(__dirname, '.tidak-ada-config.json'), MC_USERNAME: 'IntegrationBot' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    ], { cwd: ROOT, env: { ...process.env, MC_API: '0', MC_CONFIG: path.join(__dirname, '.tidak-ada-config.json'), MC_USERNAME: 'IntegrationBot' }, stdio: ['ignore', 'pipe', 'pipe'] });
     bot.stdout.on('data', (d) => { out += d.toString(); });
     bot.stderr.on('data', (d) => { out += d.toString(); });
 
@@ -107,7 +107,7 @@ process.on('uncaughtException', (err) => { cleanup(); throw err; });
     path.join(ROOT, 'index.js'),
     '--host', '127.0.0.1', '--port', PORT, '--version', '1.16',
     '--noFile', '--noRegister', '--afkInterval', '1500'
-  ], { cwd: ROOT, env: { ...process.env, MC_CONFIG: path.join(__dirname, '.tidak-ada-config.json'), MC_USERNAME: 'ReconnectBot' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  ], { cwd: ROOT, env: { ...process.env, MC_API: '0', MC_CONFIG: path.join(__dirname, '.tidak-ada-config.json'), MC_USERNAME: 'ReconnectBot' }, stdio: ['ignore', 'pipe', 'pipe'] });
   let reconnectOut = '';
   bot.stdout.on('data', (d) => { reconnectOut += d.toString(); });
   bot.stderr.on('data', (d) => { reconnectOut += d.toString(); });

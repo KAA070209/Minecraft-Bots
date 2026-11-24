@@ -109,7 +109,7 @@ check('formatDuration invalid', formatDuration(-1) === 'n/a');
 
 process.stdout.write('\n');
 const { createLogger } = require('../lib/logger');
-const { extractKickReason, ONLINE_MODE_KICK_PATTERN, AUTH_KICK_PATTERN, AFK_KICK_PATTERN } = require('../lib/runner');
+const { extractKickReason, ONLINE_MODE_KICK_PATTERN, AUTH_KICK_PATTERN, AFK_KICK_PATTERN, DENIED_KICK_PATTERN } = require('../lib/runner');
 
 process.stdout.write('[units] logger: tidak ada "undefined" di output\n');
 {
@@ -165,6 +165,9 @@ process.stdout.write('[units] kick classification\n');
   check('kick AFK terdeteksi', AFK_KICK_PATTERN.test('You were idle for too long'));
   check('kick "belum terdaftar" terdeteksi', AUTH_KICK_PATTERN.test('You are not registered. Please register first.'));
   check('kick "belum terdaftar" bukan online-mode', !ONLINE_MODE_KICK_PATTERN.test('You are not registered.'));
+  check('kick anti-bot Valoria Protect terdeteksi', DENIED_KICK_PATTERN.test('Valoria Protect\nYou are currently denied from entering the server. Please wait a few minutes'));
+  check('kick sonar.top terdeteksi', DENIED_KICK_PATTERN.test('https://sonar.top/discord/'));
+  check('kick biasa bukan anti-bot', !DENIED_KICK_PATTERN.test('You were idle for too long'));
   check('extractKickReason array digabung', extractKickReason([{ text: 'a' }, { text: 'b' }]) === 'a | b');
   check('extractKickReason baca description', extractKickReason({ description: 'd' }) === 'd');
   check('extractKickReason null', extractKickReason(null) === null);
